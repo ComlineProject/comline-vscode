@@ -99,7 +99,9 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile",
     "lint": "eslint src --ext ts",
-    "package": "vsce package"
+    "package": "bash scripts/package.sh",
+    "package:bundle": "bash scripts/package.sh --bundle-binaries",
+    "link-binary": "bash scripts/link-binary.sh"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",

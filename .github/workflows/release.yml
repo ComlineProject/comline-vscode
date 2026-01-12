@@ -1,0 +1,136 @@
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build-binaries:
+    name: Build LSP Binary - ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            platform: linux-x64
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            platform: darwin-x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            platform: darwin-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            platform: win32-x64
+
+    steps:
+      - name: Checkout language server
+        uses: actions/checkout@v4
+        with:
+          repository: ComlineProject/language-server
+          path: language-server
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build language server
+        working-directory: language-server
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Prepare binary (Unix)
+        if: runner.os != 'Windows'
+        working-directory: language-server
+        run: |
+          mkdir -p ../binaries/${{ matrix.platform }}
+          cp target/${{ matrix.target }}/release/comline-lsp ../binaries/${{ matrix.platform }}/
+          chmod +x ../binaries/${{ matrix.platform }}/comline-lsp
+
+      - name: Prepare binary (Windows)
+        if: runner.os == 'Windows'
+        working-directory: language-server
+        run: |
+          New-Item -ItemType Directory -Force -Path ../binaries/${{ matrix.platform }}
+          Copy-Item target/${{ matrix.target }}/release/comline-lsp.exe ../binaries/${{ matrix.platform }}/
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.platform }}
+          path: binaries/${{ matrix.platform }}/*
+
+  package-extension:
+    name: Package Extension
+    needs: build-binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout VSCode extension
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download all binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-binaries
+
+      - name: Organize binaries
+        run: |
+          mkdir -p bin
+          for platform_dir in downloaded-binaries/binary-*; do
+            platform=$(basename "$platform_dir" | sed 's/binary-//')
+            mkdir -p "bin/$platform"
+            cp "$platform_dir"/* "bin/$platform/"
+          done
+          ls -R bin/
+
+      - name: Compile TypeScript
+        run: npm run compile
+
+      - name: Package extension
+        run: npx vsce package --allow-missing-repository
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-package
+          path: "*.vsix"
+
+      - name: Create Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "*.vsix"
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to VSCode Marketplace
+        if: github.ref_type == 'tag' && github.event_name != 'workflow_dispatch'
+        run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
+        continue-on-error: true
+
+      - name: Publish to Open VSX
+        if: github.ref_type == 'tag' && github.event_name != 'workflow_dispatch'
+        run: npx ovsx publish -p ${{ secrets.OVSX_PAT }}
+        continue-on-error: true

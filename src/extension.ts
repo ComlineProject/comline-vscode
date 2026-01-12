@@ -91,30 +91,58 @@ function getServerExecutable(context: ExtensionContext): string | null {
 
 function getBundledServerPath(context: ExtensionContext): string | null {
   const platform = process.platform;
+  const arch = process.arch;
   let binaryName = 'comline-lsp';
 
   if (platform === 'win32') {
     binaryName = 'comline-lsp.exe';
   }
 
-  // The bundled binary should be in the extension's bin directory
-  const bundledPath = context.asAbsolutePath(path.join('bin', binaryName));
+  // Multi-platform structure for production releases
+  // Try platform-specific subdirectory first (e.g., bin/linux-x64/comline-lsp)
+  const platformDir = getPlatformIdentifier(platform, arch);
+  const platformSpecificPath = context.asAbsolutePath(
+    path.join('bin', platformDir, binaryName)
+  );
 
-  if (fs.existsSync(bundledPath)) {
-    // Make sure it's executable on Unix-like systems
-    if (platform !== 'win32') {
-      try {
-        fs.chmodSync(bundledPath, 0o755);
-      } catch (error) {
-        console.error('Failed to set executable permissions:', error);
-      }
-    }
-    return bundledPath;
+  if (fs.existsSync(platformSpecificPath)) {
+    ensureExecutable(platformSpecificPath, platform);
+    return platformSpecificPath;
+  }
+
+  // Fallback to single binary in bin/ for development (e.g., bin/comline-lsp)
+  const simplePath = context.asAbsolutePath(path.join('bin', binaryName));
+
+  if (fs.existsSync(simplePath)) {
+    ensureExecutable(simplePath, platform);
+    return simplePath;
   }
 
   window.showWarningMessage(
-    `Bundled Comline Language Server not found at: ${bundledPath}. Please ensure the binary is packaged with the extension or configure a custom path.`
+    `Bundled Comline Language Server not found. Searched:\n- ${platformSpecificPath}\n- ${simplePath}\n\nPlease ensure the binary is available or configure a custom path.`
   );
   
   return null;
+}
+
+function getPlatformIdentifier(platform: string, arch: string): string {
+  // Map Node.js platform/arch to VSCode platform identifiers
+  if (platform === 'win32') {
+    return arch === 'x64' ? 'win32-x64' : `win32-${arch}`;
+  } else if (platform === 'darwin') {
+    return arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+  } else if (platform === 'linux') {
+    return arch === 'x64' ? 'linux-x64' : `linux-${arch}`;
+  }
+  return `${platform}-${arch}`;
+}
+
+function ensureExecutable(filePath: string, platform: string): void {
+  if (platform !== 'win32') {
+    try {
+      fs.chmodSync(filePath, 0o755);
+    } catch (error) {
+      console.error('Failed to set executable permissions:', error);
+    }
+  }
 }
