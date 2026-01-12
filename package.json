@@ -1,0 +1,116 @@
+{
+  "name": "comline-vscode",
+  "displayName": "Comline",
+  "description": "Language support for Comline schema files (.ids)",
+  "version": "0.1.0",
+  "publisher": "comline",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ComlineProject/language-server"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "comline",
+    "ids",
+    "schema",
+    "language-server",
+    "lsp"
+  ],
+  "activationEvents": [
+    "onLanguage:comline"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "comline",
+        "aliases": [
+          "Comline",
+          "comline"
+        ],
+        "extensions": [
+          ".ids"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/comline-light.png",
+          "dark": "./icons/comline-dark.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "comline",
+        "scopeName": "source.comline",
+        "path": "./syntaxes/comline.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Comline",
+      "properties": {
+        "comline.server.mode": {
+          "type": "string",
+          "enum": [
+            "bundled",
+            "path",
+            "custom"
+          ],
+          "default": "bundled",
+          "description": "How to locate the language server binary",
+          "enumDescriptions": [
+            "Use the bundled language server (default)",
+            "Look for 'comline-lsp' in system PATH",
+            "Use custom path specified in comline.server.customPath"
+          ]
+        },
+        "comline.server.customPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to the language server binary (used when mode is 'custom')"
+        },
+        "comline.server.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable debug logging for the language server"
+        },
+        "comline.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the language server"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile",
+    "lint": "eslint src --ext ts",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.75.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vscode/vsce": "^2.22.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

@@ -1,0 +1,44 @@
+// Example Comline schema file
+namespace examples.user.v1;
+
+// User entity
+struct User {
+  id: u64,
+  username: string,
+  email: string,
+  role: UserRole,
+  created_at: i64,
+  preferences: option<UserPreferences>,
+}
+
+struct UserPreferences {
+  theme: string,
+  notifications_enabled: bool,
+  language: string,
+}
+
+enum UserRole {
+  Admin,
+  Moderator,
+  User,
+  Guest,
+}
+
+// User service protocol
+protocol UserService {
+  fn get_user(id: u64) -> option<User>;
+  fn create_user(username: string, email: string) -> User;
+  fn update_user(id: u64, data: User) -> bool;
+  fn delete_user(id: u64) -> bool;
+  fn list_users(limit: u32, offset: u32) -> list<User>;
+}
+
+// Authentication protocol
+protocol AuthService {
+  fn login(username: string, password: string) -> option<string>;
+  fn logout(token: string) -> bool;
+  fn verify_token(token: string) -> option<User>;
+}
+
+const MAX_USERNAME_LENGTH: u32 = 50;
+const MAX_EMAIL_LENGTH: u32 = 255;
