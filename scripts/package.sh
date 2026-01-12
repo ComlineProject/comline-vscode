@@ -21,7 +21,7 @@ fi
 echo ""
 echo "📦 Compiling TypeScript..."
 cd "$PROJECT_ROOT"
-npm run compile
+yarn compile
 
 if [ $? -ne 0 ]; then
   echo "❌ TypeScript compilation failed"

@@ -137,13 +137,13 @@ git clone https://github.com/ComlineProject/language-server
 cd language-server/plugins/vscode/comline-vscode
 
 # Install dependencies
-npm install
+yarn install
 
 # Compile TypeScript
-npm run compile
+yarn compile
 
 # Package the extension
-npm run package
+yarn package
 ```
 
 This creates a `.vsix` file that can be installed manually.

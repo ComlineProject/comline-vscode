@@ -48,10 +48,10 @@ In the Extension Development Host window:
 
 ```bash
 # Development package (no binaries bundled)
-npm run package
+yarn package
 
 # Production package (requires binaries for all platforms)
-npm run package:bundle
+yarn package:bundle
 ```
 
 The `package:bundle` command will check for binaries in:
@@ -83,12 +83,12 @@ The GitHub Actions workflow will:
 
 | Command | Description |
 |---------|-------------|
-| `npm run compile` | Compile TypeScript |
-| `npm run watch` | Watch mode for development |
-| `npm run lint` | Run ESLint |
-| `npm run package` | Package extension (dev mode) |
-| `npm run package:bundle` | Package with all binaries |
-| `npm run link-binary` | Run symlink helper script |
+| `yarn compile` | Compile TypeScript |
+| `yarn watch` | Watch mode for development |
+| `yarn lint` | Run ESLint |
+| `yarn package` | Package extension (dev mode) |
+| `yarn package:bundle` | Package with all binaries |
+| `yarn link-binary` | Run symlink helper script |
 
 ---
 
@@ -100,12 +100,12 @@ The GitHub Actions workflow will:
 
 **TypeScript errors?**
 ```bash
-npm run compile
+yarn compile
 ```
 
 **Want to rebuild?**
 ```bash
-npm run compile && code --install-extension *.vsix
+yarn compile && code --install-extension *.vsix
 ```
 
 ---
