@@ -1,6 +1,17 @@
-node_modules
-out
+# VSCode
 *.vsix
 .vscode-test/
 *.log
+
+# Node
+node_modules
+
+# Build
+out
+
+# macOS
 .DS_Store
+
+# LSP Binaries
+bin/
+!bin/README.md
