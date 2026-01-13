@@ -71,11 +71,12 @@ elif [ -f "$TARGET_LINK" ]; then
   fi
 fi
 
-# Create symlink
-ln -s "$BINARY_PATH" "$TARGET_LINK"
+# Create symlink (relative path for portability)
+RELATIVE_PATH=$(realpath --relative-to="$BIN_DIR" "$BINARY_PATH")
+ln -s "$RELATIVE_PATH" "$TARGET_LINK"
 
 echo "✅ Created symlink:"
-echo "   $TARGET_LINK -> $BINARY_PATH"
+echo "   $TARGET_LINK -> $RELATIVE_PATH"
 echo ""
 echo "🎉 Ready for development!"
 echo "   Press F5 in VSCode to test the extension"
