@@ -4,6 +4,12 @@ All notable changes to the "comline-vscode" extension will be documented in this
 
 ## [Unreleased]
 
+### Added
+- Syntax highlighting for `.idp` (package/congregation config) files, as
+  the new `comline-package` language — a separate grammar from `.ids`
+  since the two share almost no vocabulary (`.idp`'s only real keyword is
+  `congregation`; everything else is an ordinary identifier).
+
 ### Fixed
 - Packaged `.vsix` builds were missing their one runtime dependency
   (`vscode-languageclient`) — `.vscodeignore` excluded `node_modules/**`
