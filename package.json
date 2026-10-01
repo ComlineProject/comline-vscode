@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "comline",
   "license": "MIT",
+  "icon": "icons/extension-icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/ComlineProject/comline-vscode"

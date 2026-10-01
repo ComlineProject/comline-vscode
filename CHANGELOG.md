@@ -23,6 +23,9 @@ All notable changes to the "comline-vscode" extension will be documented in this
 - `Comline: Restart Language Server` command (previously documented, never
   implemented).
 - Language icons (`icons/comline-{light,dark}.png`).
+- The extension's own icon (`icons/extension-icon.png`) — `package.json`
+  had no top-level `icon` field at all, so it showed a generic placeholder
+  in the Extensions view and Marketplace listing.
 
 ### Changed
 - `bin/comline-lsp` is no longer a committed symlink (was machine-specific
