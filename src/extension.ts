@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { workspace, ExtensionContext, window, commands } from 'vscode';
+import { workspace, ExtensionContext, window, commands, tasks, Task, TaskScope, ProcessExecution, TaskRevealKind, TaskPanelKind } from 'vscode';
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -66,7 +66,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
       await client.stop();
       await client.start();
       window.showInformationMessage('Comline Language Server restarted.');
-    })
+    }),
+    commands.registerCommand('comline.build', () => runCliCommand('build')),
+    commands.registerCommand('comline.check', () => runCliCommand('check')),
+    commands.registerCommand('comline.generate', () => runCliCommand('generate')),
+    commands.registerCommand('comline.clean', () => runCliCommand('clean'))
   );
 
   try {
@@ -83,6 +87,55 @@ export async function deactivate(): Promise<void> {
   if (client) {
     await client.stop();
   }
+}
+
+function getWorkspacePath(): string | undefined {
+  const doc = window.activeTextEditor?.document;
+  const folder = doc ? workspace.getWorkspaceFolder(doc.uri) : workspace.workspaceFolders?.[0];
+  return folder?.uri.fsPath;
+}
+
+function resolveCliCommand(): string {
+  const config = workspace.getConfiguration('comline');
+  const mode = config.get<string>('cli.mode', 'path');
+  const customPath = config.get<string>('cli.customPath', '');
+  return mode === 'custom' && customPath ? customPath : 'comline';
+}
+
+async function runCliCommand(subcommand: string, extraArgs: string[] = []): Promise<void> {
+  const workspacePath = getWorkspacePath();
+  if (!workspacePath) {
+    window.showErrorMessage('Comline: no workspace folder open.');
+    return;
+  }
+
+  const args = ['--path', workspacePath, '--plain', subcommand, ...extraArgs];
+  const task = new Task(
+    { type: 'comline', subcommand },
+    TaskScope.Workspace,
+    `Comline: ${subcommand}`,
+    'comline',
+    new ProcessExecution(resolveCliCommand(), args)
+  );
+  task.presentationOptions = {
+    reveal: TaskRevealKind.Always,
+    panel: TaskPanelKind.Shared,
+  };
+
+  const execution = await tasks.executeTask(task);
+  const disposable = tasks.onDidEndTaskProcess((e) => {
+    if (e.execution !== execution) {
+      return;
+    }
+    disposable.dispose();
+    if (e.exitCode === 0) {
+      window.showInformationMessage(`Comline: ${subcommand} succeeded.`);
+    } else {
+      window.showErrorMessage(
+        `Comline: ${subcommand} failed (exit ${e.exitCode}). See the terminal for details.`
+      );
+    }
+  });
 }
 
 function getServerExecutable(context: ExtensionContext): string | null {
