@@ -13,11 +13,16 @@ not illustrative pseudocode.
   cross-file hover/go-to-definition specifically.
 - **keyvalue.ids** — a single-file key/value store with docstrings and an
   `error`-typed failure case.
+- **config.idp** + **config_with_deps.idp** — package/congregation config
+  files (pulled from `core`'s own parser test fixtures), good for exercising
+  `.idp` syntax highlighting: nested dictionaries, lists, the three "special
+  key" forms (`name@version`, `name#version`, `a::b::c`), and comments.
 
 ## Testing Features
 
 ### Syntax Highlighting
-All keywords, types, and constructs should be properly colored.
+All keywords, types, and constructs should be properly colored in both
+`.ids` and `.idp` files.
 
 ### LSP Features to Test
 

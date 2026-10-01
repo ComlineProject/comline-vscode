@@ -1,0 +1,120 @@
+{
+  "name": "Comline Package",
+  "scopeName": "source.comline-package",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#congregationKeyword" },
+    { "include": "#booleans" },
+    { "include": "#dependencyAddress" },
+    { "include": "#itemVersionMeta" },
+    { "include": "#namespacedKey" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#punctuation" },
+    { "include": "#identifiers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.comline-package",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.comline-package",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.comline-package",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.comline-package",
+              "match": "\\\\([\"\\\\/bfnrt]|u[0-9a-fA-F]{4})"
+            }
+          ]
+        }
+      ]
+    },
+    "congregationKeyword": {
+      "patterns": [
+        {
+          "name": "keyword.other.congregation.comline-package",
+          "match": "\\bcongregation\\b"
+        }
+      ]
+    },
+    "booleans": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.comline-package",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.integer.comline-package",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "dependencyAddress": {
+      "patterns": [
+        {
+          "name": "meta.key.dependency-address.comline-package",
+          "match": "\\b([a-zA-Z0-9_]+(?:::[a-zA-Z0-9_]+)*)(@)([a-zA-Z0-9_.]+(?:::[a-zA-Z0-9_.]+)*)\\b",
+          "captures": {
+            "1": { "name": "entity.name.namespace.comline-package" },
+            "2": { "name": "punctuation.separator.dependency.comline-package" },
+            "3": { "name": "constant.other.version.comline-package" }
+          }
+        }
+      ]
+    },
+    "itemVersionMeta": {
+      "patterns": [
+        {
+          "name": "meta.key.item-version.comline-package",
+          "match": "\\b([a-zA-Z0-9_]+(?:::[a-zA-Z0-9_]+)*)(#)([a-zA-Z0-9_.]+)\\b",
+          "captures": {
+            "1": { "name": "entity.name.namespace.comline-package" },
+            "2": { "name": "punctuation.separator.version.comline-package" },
+            "3": { "name": "constant.other.version.comline-package" }
+          }
+        }
+      ]
+    },
+    "namespacedKey": {
+      "patterns": [
+        {
+          "name": "entity.name.namespace.comline-package",
+          "match": "\\b[a-zA-Z0-9_]+(?:::[a-zA-Z0-9_]+)+\\b"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.comline-package",
+          "match": "[={}\\[\\],]"
+        }
+      ]
+    },
+    "identifiers": {
+      "patterns": [
+        {
+          "name": "variable.other.comline-package",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}
