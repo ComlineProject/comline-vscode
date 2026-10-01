@@ -32,8 +32,8 @@ Open this folder in VSCode and press **F5**. This will:
 
 ### 3. Try It Out
 
-In the Extension Development Host window:
-1. Open `examples/user.ids`
+F5 opens straight onto `test-workspace/`:
+1. Open `test-workspace/chat.ids` (or `keyvalue.ids`)
 2. You should see:
    - ✅ Syntax highlighting
    - ✅ Outline view (Ctrl+Shift+O)

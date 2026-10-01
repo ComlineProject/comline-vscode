@@ -4,9 +4,15 @@ This workspace is automatically opened when you press F5 to test the Comline VSC
 
 ## Files
 
-- **user.ids** - User authentication and profile management
-- **product.ids** - E-commerce product catalog and orders
-- **messaging.ids** - Real-time messaging system
+Pulled from [`ComlineProject/examples`](https://github.com/ComlineProject/examples),
+the same corpus the playground tests against — real, parser-valid schemas,
+not illustrative pseudocode.
+
+- **chat.ids** + **types.ids** — a small chat protocol split across two
+  files (`chat.ids` has `use types::Message`), good for exercising
+  cross-file hover/go-to-definition specifically.
+- **keyvalue.ids** — a single-file key/value store with docstrings and an
+  `error`-typed failure case.
 
 ## Testing Features
 
@@ -26,11 +32,11 @@ All keywords, types, and constructs should be properly colored.
    - Inside struct bodies, type field types
 
 4. **Go to Definition** (F12)
-   - Click on a type reference like `UserRole` in user.ids
-   - Should jump to the enum definition
+   - Click on `Message` in `chat.ids`'s `function send(...) -> Message ! Rejected;`
+   - Should jump to `struct Message` in `types.ids` — a *different file*
 
 5. **Find References** (Shift+F12)
-   - Right-click on `User` struct
+   - Right-click on `struct Entry` in `keyvalue.ids`
    - See all places it's referenced
 
 6. **Diagnostics**

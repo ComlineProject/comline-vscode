@@ -1,44 +1,46 @@
-// Example Comline schema file
-namespace examples.user.v1;
-
-// User entity
+/// Example Comline schema: a simple user directory service.
 struct User {
-  id: u64,
-  username: string,
-  email: string,
-  role: UserRole,
-  created_at: i64,
-  preferences: option<UserPreferences>,
+    id: u64
+    username: string
+    email: string
+    role: UserRole
+    created_at: u64
+    optional preferences: UserPreferences
 }
 
 struct UserPreferences {
-  theme: string,
-  notifications_enabled: bool,
-  language: string,
+    theme: string
+    notifications_enabled: bool
+    language: string
 }
 
 enum UserRole {
-  Admin,
-  Moderator,
-  User,
-  Guest,
+    Admin
+    Moderator
+    User
+    Guest
 }
 
-// User service protocol
+error UserNotFound {
+    message = "no user with id {self.id}"
+    id: u64
+}
+
+/// User directory: create, read, update, delete, list.
 protocol UserService {
-  fn get_user(id: u64) -> option<User>;
-  fn create_user(username: string, email: string) -> User;
-  fn update_user(id: u64, data: User) -> bool;
-  fn delete_user(id: u64) -> bool;
-  fn list_users(limit: u32, offset: u32) -> list<User>;
+    function get_user(id: u64) -> User ! UserNotFound;
+    function create_user(username: string, email: string) -> User;
+    function update_user(id: u64, data: User) -> bool;
+    function delete_user(id: u64) -> bool;
+    function list_users(limit: u32, offset: u32) -> User[];
 }
 
-// Authentication protocol
+/// Authentication.
 protocol AuthService {
-  fn login(username: string, password: string) -> option<string>;
-  fn logout(token: string) -> bool;
-  fn verify_token(token: string) -> option<User>;
+    function login(username: string, password: string) -> string ! UserNotFound;
+    function logout(token: string);
+    function verify_token(token: string) -> User ! UserNotFound;
 }
 
-const MAX_USERNAME_LENGTH: u32 = 50;
-const MAX_EMAIL_LENGTH: u32 = 255;
+const MAX_USERNAME_LENGTH: u32 = 50
+const MAX_EMAIL_LENGTH: u32 = 255

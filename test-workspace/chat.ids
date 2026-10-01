@@ -1,0 +1,14 @@
+use types::Message
+
+error Rejected {
+    message = "rejected: {self.reason}"
+    reason: string
+}
+
+@framing = "jsonrpc"
+protocol Chat {
+    /// Request/response with a raised error.
+    function send(text: string) -> Message ! Rejected;
+    /// Fire-and-forget.
+    function note(text: string);
+}

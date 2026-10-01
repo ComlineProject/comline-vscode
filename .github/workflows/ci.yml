@@ -52,16 +52,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
+          cache: 'yarn'
 
       - name: Install dependencies
-        run: npm ci
+        run: yarn install --frozen-lockfile
 
       - name: Compile TypeScript
-        run: npm run compile
+        run: yarn compile
 
       - name: Test packaging (without binaries)
-        run: npx vsce package --allow-missing-repository
+        run: npx vsce package --allow-missing-repository --yarn
 
       - name: Upload test package
         uses: actions/upload-artifact@v4
