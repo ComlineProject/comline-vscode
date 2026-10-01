@@ -30,8 +30,61 @@
       {
         "command": "comline.restartServer",
         "title": "Comline: Restart Language Server"
+      },
+      {
+        "command": "comline.build",
+        "title": "Comline: Build"
+      },
+      {
+        "command": "comline.check",
+        "title": "Comline: Check"
+      },
+      {
+        "command": "comline.generate",
+        "title": "Comline: Generate"
+      },
+      {
+        "command": "comline.clean",
+        "title": "Comline: Clean"
       }
     ],
+    "submenus": [
+      {
+        "id": "comline.cliMenu",
+        "label": "Comline",
+        "icon": {
+          "light": "./icons/comline-light.png",
+          "dark": "./icons/comline-dark.png"
+        }
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "submenu": "comline.cliMenu",
+          "group": "navigation",
+          "when": "resourceLangId == comline || resourceLangId == comline-package"
+        }
+      ],
+      "comline.cliMenu": [
+        {
+          "command": "comline.build",
+          "group": "1_actions"
+        },
+        {
+          "command": "comline.check",
+          "group": "1_actions"
+        },
+        {
+          "command": "comline.generate",
+          "group": "1_actions"
+        },
+        {
+          "command": "comline.clean",
+          "group": "2_cleanup"
+        }
+      ]
+    },
     "languages": [
       {
         "id": "comline",
@@ -114,6 +167,24 @@
           ],
           "default": "off",
           "description": "Traces the communication between VS Code and the language server"
+        },
+        "comline.cli.mode": {
+          "type": "string",
+          "enum": [
+            "path",
+            "custom"
+          ],
+          "default": "path",
+          "description": "How to locate the comline CLI binary used by the Build/Check/Generate/Clean commands",
+          "enumDescriptions": [
+            "Look for 'comline' in system PATH (default)",
+            "Use custom path specified in comline.cli.customPath"
+          ]
+        },
+        "comline.cli.customPath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to the comline CLI binary (used when comline.cli.mode is 'custom')"
         }
       }
     }

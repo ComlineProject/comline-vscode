@@ -9,6 +9,12 @@ All notable changes to the "comline-vscode" extension will be documented in this
   the new `comline-package` language — a separate grammar from `.ids`
   since the two share almost no vocabulary (`.idp`'s only real keyword is
   `congregation`; everything else is an ordinary identifier).
+- A Comline icon in the editor title bar opens a menu to run
+  `comline build` / `check` / `generate` / `clean` against the current
+  workspace (via the VS Code Tasks API, with a toast reporting the CLI's
+  real exit code), also available from the Command Palette. New settings:
+  `comline.cli.mode` / `comline.cli.customPath`, mirroring the existing
+  `comline.server.*` shape.
 
 ### Fixed
 - Packaged `.vsix` builds were missing their one runtime dependency

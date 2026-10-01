@@ -28,6 +28,23 @@ This extension provides rich language support for Comline through integration wi
 - Bracket matching and auto-closing
 - Code folding for struct/enum/protocol blocks
 
+### ⚙️ CLI Commands
+A Comline icon in the editor title bar (when a `.ids`/`.idp` file is open)
+opens a menu to run the [comline CLI](https://github.com/ComlineProject/cli)
+against the current workspace, with a toast reporting success or failure:
+- **Build** — compile and freeze a new version
+- **Check** — validate without writing anything
+- **Generate** — write generated code for every configured target
+- **Clean** — remove generated code
+
+Each is also available from the Command Palette as `Comline: Build` /
+`Comline: Check` / `Comline: Generate` / `Comline: Clean`. Requires the
+`comline` CLI to be installed and on `PATH` (or configured via
+`comline.cli.customPath`, see below) — install it with:
+```bash
+cargo install --git https://github.com/ComlineProject/cli
+```
+
 ## Installation
 
 ### From VSIX (Manual Installation)
@@ -78,6 +95,18 @@ Specify a custom path to the language server binary:
   
   // Trace LSP communication (off, messages, verbose)
   "comline.trace.server": "messages"
+}
+```
+
+### CLI Binary Location
+
+The Build/Check/Generate/Clean commands look for `comline` on `PATH` by
+default. To use a non-`PATH` install instead:
+
+```json
+{
+  "comline.cli.mode": "custom",
+  "comline.cli.customPath": "/path/to/comline"
 }
 ```
 
