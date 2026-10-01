@@ -5,5 +5,10 @@ out
 *.log
 .DS_Store
 
-# Test workspace (keep README, ignore .ids test files)
-test-workspace/*.ids
+# Local dev-mode server binary (see bin/README.md, `yarn link-binary`) —
+# machine-specific, never committed. Production multi-platform binaries
+# (bin/<platform>/comline-lsp) are populated by CI only when packaging a
+# release, never checked in either.
+bin/comline-lsp
+bin/comline-lsp.exe
+bin/*/

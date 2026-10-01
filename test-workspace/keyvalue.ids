@@ -1,0 +1,19 @@
+error NotFound {
+    message = "no entry for {self.key}"
+    key: string
+}
+
+struct Entry {
+    value: string
+    version: u64
+}
+
+/// A tiny key/value store — a read that can fail, and a couple of writes.
+protocol Store {
+    /// Read a key.
+    function get(key: string) -> Entry ! NotFound;
+    /// Write a value; returns its new version.
+    function put(key: string, value: string) -> u64;
+    /// Fire-and-forget delete.
+    function remove(key: string);
+}

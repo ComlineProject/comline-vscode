@@ -56,7 +56,8 @@ if [ "$BUNDLE_BINARIES" = true ]; then
     echo ""
     echo "⚠️  Missing binaries for platforms: ${MISSING_PLATFORMS[*]}"
     echo "   Packaging will continue, but the extension may not work on all platforms."
-    echo "   Run './scripts/build-binaries.sh' to build binaries for all platforms."
+    echo "   Multi-platform binaries are built by .github/workflows/release.yml on a"
+    echo "   tag push — this script doesn't build them locally."
   else
     echo ""
     echo "✅ All platform binaries found"
@@ -80,7 +81,7 @@ fi
 echo ""
 echo "📦 Packaging extension..."
 
-npx vsce package --allow-missing-repository
+npx vsce package --allow-missing-repository --yarn
 
 if [ $? -ne 0 ]; then
   echo "❌ Packaging failed"

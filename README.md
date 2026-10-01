@@ -31,7 +31,7 @@ This extension provides rich language support for Comline through integration wi
 ## Installation
 
 ### From VSIX (Manual Installation)
-1. Download the latest `.vsix` file from [releases](https://github.com/ComlineProject/language-server/releases)
+1. Download the latest `.vsix` file from [releases](https://github.com/ComlineProject/comline-vscode/releases)
 2. In VSCode: `Extensions` → `...` → `Install from VSIX...`
 3. Select the downloaded file
 
@@ -90,26 +90,29 @@ Specify a custom path to the language server binary:
 ### Example Comline Schema
 
 ```comline
-// User service protocol
-namespace user.v1;
-
+/// User service protocol
 struct User {
-  id: u64,
-  name: string,
-  email: string,
-  created_at: i64,
+    id: u64
+    name: string
+    email: string
+    created_at: u64
 }
 
 enum UserRole {
-  Admin,
-  User,
-  Guest,
+    Admin
+    User
+    Guest
+}
+
+error UserNotFound {
+    message = "no user with id {self.id}"
+    id: u64
 }
 
 protocol UserService {
-  fn get_user(id: u64) -> option<User>;
-  fn create_user(name: string, email: string) -> User;
-  fn delete_user(id: u64) -> bool;
+    function get_user(id: u64) -> User ! UserNotFound;
+    function create_user(name: string, email: string) -> User;
+    function delete_user(id: u64) -> bool;
 }
 ```
 
@@ -133,11 +136,15 @@ protocol UserService {
 
 ```bash
 # Clone the repository
-git clone https://github.com/ComlineProject/language-server
-cd language-server/plugins/vscode/comline-vscode
+git clone https://github.com/ComlineProject/comline-vscode
+cd comline-vscode
 
 # Install dependencies
 yarn install
+
+# Link a local comline-lsp build (needed to actually run the server —
+# see TESTING.md)
+yarn link-binary <path-to-a-language-server-checkout>
 
 # Compile TypeScript
 yarn compile
@@ -150,7 +157,7 @@ This creates a `.vsix` file that can be installed manually.
 
 ## Contributing
 
-Contributions are welcome! Please open issues or submit pull requests on [GitHub](https://github.com/ComlineProject/language-server).
+Contributions are welcome! Please open issues or submit pull requests on [GitHub](https://github.com/ComlineProject/comline-vscode).
 
 ## License
 
@@ -158,6 +165,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## Links
 
+- [This extension](https://github.com/ComlineProject/comline-vscode)
 - [Comline Core](https://github.com/ComlineProject/core)
 - [Comline Language Server](https://github.com/ComlineProject/language-server)
 - [VSCode Extension API](https://code.visualstudio.com/api)

@@ -1,11 +1,17 @@
 # Testing the Comline VSCode Extension
 
-## ✅ Setup Complete
+## ✅ Setup
 
-The extension is ready to test! The language server binary is symlinked to:
+The extension needs a local `comline-lsp` binary before F5 will find a
+server to attach to — this isn't committed (it's machine-specific), so run
+once after cloning:
+```bash
+yarn install
+yarn link-binary <path-to-your-language-server-checkout>
+# e.g. yarn link-binary ../../../../language-server
 ```
-bin/comline-lsp → language-server/target/debug/comline-lsp
-```
+This builds `comline-lsp` (debug, by default) in that checkout if needed and
+symlinks it to `bin/comline-lsp`.
 
 ---
 
@@ -13,15 +19,17 @@ bin/comline-lsp → language-server/target/debug/comline-lsp
 
 ### Method 1: Debug Mode (Recommended)
 
-1. **Open this folder in VSCode**
-   - Make sure you're in `/home/ag/Documents/shared/projects/GM - Dev/comline/comline-rs/plugins/vscode/comline-vscode`
+1. **Open this repo's root folder in VSCode.**
 
 2. **Press F5**
    - This launches the "Extension Development Host" window
    - The extension will auto-compile and activate
+   - It opens straight onto `test-workspace/`
 
-3. **In the new window, open the example file:**
-   - Navigate to `examples/user.ids`
+3. **In the new window, open one of the example files:**
+   - `test-workspace/chat.ids` / `types.ids` — a small protocol split across
+     two files, good for cross-file hover/go-to-definition
+   - `test-workspace/keyvalue.ids` — a single-file example with docstrings
    - Or create a new `.ids` file
 
 4. **Test these features:**
@@ -94,9 +102,8 @@ code --install-extension comline-vscode-0.1.0.vsix
 
 ### Need to rebuild language server?
 ```bash
-cd ../../../language-server
-cargo build
-# Symlink automatically uses the new build!
+yarn link-binary <path-to-your-language-server-checkout>
+# Rebuilds (if needed) and re-links bin/comline-lsp to the new build.
 ```
 
 ---

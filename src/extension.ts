@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { workspace, ExtensionContext, window } from 'vscode';
+import { workspace, ExtensionContext, window, commands } from 'vscode';
 import {
   LanguageClient,
   LanguageClientOptions,
@@ -28,9 +28,17 @@ export async function activate(context: ExtensionContext): Promise<void> {
     return;
   }
 
+  const config = workspace.getConfiguration('comline');
+  const debug = config.get<boolean>('server.debug', false);
+
   const serverOptions: ServerOptions = {
     command: serverExecutable,
     transport: TransportKind.stdio,
+    // `comline-lsp` builds its tracing subscriber from `RUST_LOG` (see
+    // `language-server/src/main.rs`'s `EnvFilter::from_default_env()`) — an
+    // env var name, not a JS property, hence the naming-convention opt-out.
+    // eslint-disable-next-line @typescript-eslint/naming-convention
+    options: debug ? { env: { ...process.env, RUST_LOG: 'debug' } } : undefined,
   };
 
   const clientOptions: LanguageClientOptions = {
@@ -40,11 +48,25 @@ export async function activate(context: ExtensionContext): Promise<void> {
     },
   };
 
+  // The id (first arg) doubles as the settings section `vscode-languageclient`
+  // reads `trace.server` from — must be 'comline' to match the declared
+  // `comline.trace.server` setting, not the display name.
   client = new LanguageClient(
-    'comline-lsp',
+    'comline',
     'Comline Language Server',
     serverOptions,
     clientOptions
+  );
+
+  context.subscriptions.push(
+    commands.registerCommand('comline.restartServer', async () => {
+      if (!client) {
+        return;
+      }
+      await client.stop();
+      await client.start();
+      window.showInformationMessage('Comline Language Server restarted.');
+    })
   );
 
   try {
