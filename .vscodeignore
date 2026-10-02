@@ -7,3 +7,6 @@ tsconfig.json
 **/*.map
 **/*.ts
 .eslintrc.json
+assets/icon-font-src/**
+.fantasticonrc.js
+fonts/*.json
