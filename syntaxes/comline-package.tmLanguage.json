@@ -3,6 +3,7 @@
   "scopeName": "source.comline-package",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#typeAnnotation" },
     { "include": "#congregationKeyword" },
     { "include": "#booleans" },
     { "include": "#dependencyAddress" },
@@ -24,6 +25,18 @@
           "name": "comment.block.comline-package",
           "begin": "/\\*",
           "end": "\\*/"
+        }
+      ]
+    },
+    "typeAnnotation": {
+      "patterns": [
+        {
+          "comment": "`key: type` is not real .idp syntax (the grammar never uses ':') — this exists purely so the extension's own hover popups (key: type, rendered via a comline-package code block) can color the type distinctly from the key. Harmless on real .idp source, which never contains ':'.",
+          "match": "(:)[ \\t]*([a-zA-Z0-9_][a-zA-Z0-9_() ]*?)(?=[ \\t]*(?://|$))",
+          "captures": {
+            "1": { "name": "punctuation.separator.type.comline-package" },
+            "2": { "name": "entity.name.type.comline-package" }
+          }
         }
       ]
     },
