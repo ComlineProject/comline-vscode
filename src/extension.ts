@@ -134,21 +134,18 @@ export async function activate(context: ExtensionContext): Promise<void> {
       { scheme: 'file', language: 'comline-package' },
       new LanguagesHoverProvider()
     ),
-    // Stub, `.idp` only — this just wires the plumbing so
-    // `editor.action.formatDocument` (and `comline.formatFile` below)
-    // already do the right thing the moment a real `.idp` formatter exists,
-    // with no further menu/command changes needed. `.ids` is deliberately
-    // NOT included here: the language server already registers a real (if
-    // basic) formatter for it (`document_formatting_provider` in
-    // `backend.rs`, backed by `handlers/formatting.rs`) — adding a second,
-    // no-op client-side provider for the same language would conflict with
-    // or shadow that real one.
-    languages.registerDocumentFormattingEditProvider(
-      { scheme: 'file', language: 'comline-package' },
-      {
-        provideDocumentFormattingEdits: () => [],
-      }
-    ),
+    // No client-side formatting provider for `.idp` is registered here —
+    // would be redundant and conflicting, not just unnecessary. Since
+    // `documentSelector` below includes `comline-package` (needed to sync
+    // `.idp` documents for diagnostics), `vscode-languageclient` already
+    // auto-registers a formatting provider for it too, backed by the
+    // server's declared `document_formatting_provider` capability — the
+    // server now formats `.idp` for real (`backend.rs::formatting` has no
+    // `is_idp` guard; it reuses the same brace-depth pass `.ids` uses, see
+    // `handlers/formatting.rs`). A second, client-side provider for the
+    // same language would just show as a confusing duplicate in VS Code's
+    // "select a default formatter" picker. `comline.formatFile` below
+    // still routes through `editor.action.formatDocument` either way.
     commands.registerCommand('comline.refreshLanguageTargets', () => {
       targetsPromise = undefined;
       void ensureTargetsLoaded();

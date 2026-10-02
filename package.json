@@ -67,7 +67,7 @@
       },
       {
         "command": "comline.menu.formatFile",
-        "title": "Format Document"
+        "title": "Format File"
       },
       {
         "command": "comline.menu.lintFile",
