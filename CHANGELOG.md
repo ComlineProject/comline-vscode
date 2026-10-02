@@ -15,6 +15,13 @@ All notable changes to the "comline-vscode" extension will be documented in this
   real exit code), also available from the Command Palette. New settings:
   `comline.cli.mode` / `comline.cli.customPath`, mirroring the existing
   `comline.server.*` shape.
+- Build/Check/Generate/Clean now resolve the right Comline package
+  automatically: a single `config.idp` anywhere in the workspace is used
+  with no prompt; with more than one, a status bar item (only shown when
+  there's a real choice to make) shows the active package and opens a menu
+  to switch it or to run a command against any other discovered package
+  without changing the active one. Commands run with real colored CLI
+  output instead of `--plain`.
 
 ### Fixed
 - Packaged `.vsix` builds were missing their one runtime dependency

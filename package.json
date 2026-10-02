@@ -23,7 +23,9 @@
     "language-server",
     "lsp"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "workspaceContains:**/config.idp"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -46,6 +48,10 @@
       {
         "command": "comline.clean",
         "title": "Comline: Clean"
+      },
+      {
+        "command": "comline.selectPackage",
+        "title": "Comline: Select Active Package"
       }
     ],
     "submenus": [
@@ -129,6 +135,15 @@
         "path": "./syntaxes/comline-package.tmLanguage.json"
       }
     ],
+    "icons": {
+      "comline-mark": {
+        "description": "Comline brand mark",
+        "default": {
+          "fontPath": "./fonts/comline-icons.woff",
+          "fontCharacter": "\\E900"
+        }
+      }
+    },
     "configuration": {
       "type": "object",
       "title": "Comline",
@@ -197,7 +212,8 @@
     "lint": "eslint src --ext ts",
     "package": "bash scripts/package.sh",
     "package:bundle": "bash scripts/package.sh --bundle-binaries",
-    "link-binary": "bash scripts/link-binary.sh"
+    "link-binary": "bash scripts/link-binary.sh",
+    "build:icon-font": "fantasticon"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",
@@ -206,6 +222,7 @@
     "@typescript-eslint/parser": "^6.0.0",
     "@vscode/vsce": "^2.22.0",
     "eslint": "^8.0.0",
+    "fantasticon": "^4.1.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {
