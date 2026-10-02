@@ -344,7 +344,12 @@ async function refreshPackageRoots(): Promise<void> {
 }
 
 function updatePackageStatusBarItem(): void {
-  if (discoveredPackageRoots.length < 2) {
+  // Always visible with 1+ packages — shows the current context even when
+  // there's only one (nothing to disambiguate, but still worth seeing at a
+  // glance), same idea as an editor's always-shown git branch indicator.
+  // Resolution itself stays fully implicit either way (resolvePackageRoot
+  // never prompts for a single package) — this only controls visibility.
+  if (discoveredPackageRoots.length < 1) {
     packageStatusBarItem.hide();
     return;
   }
