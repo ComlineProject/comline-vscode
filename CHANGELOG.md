@@ -22,6 +22,21 @@ All notable changes to the "comline-vscode" extension will be documented in this
   to switch it or to run a command against any other discovered package
   without changing the active one. Commands run with real colored CLI
   output instead of `--plain`.
+- `.idp` completion and hover for the whole schema (`specification_version`,
+  `code_generation.languages`, `dependencies`, `publish_registries`, and
+  each one's own sub-keys) — client-side, no `.idp` language-server support
+  existed to build on. `code_generation.languages` completion/hover is
+  backed by a live `comline targets` query against the configured CLI
+  (`comline.cli.*`), not a guessed list, with a dashed warning underline on
+  any declared target that isn't actually registered.
+- Real `.idp` parse-error diagnostics, from the actual `.idp` grammar via
+  the language server (parse errors only — `.idp`'s deeper semantic
+  validation isn't safe to run per-keystroke yet, see the language-server
+  changelog).
+- The editor-title Comline button is now file-scoped (`Format Document` /
+  `Lint File`, both currently stubs — `comline` has no formatter or linter
+  today) rather than duplicating the project-wide Build/Check/Generate/
+  Clean actions, which stay reachable via the Command Palette.
 
 ### Fixed
 - Packaged `.vsix` builds were missing their one runtime dependency

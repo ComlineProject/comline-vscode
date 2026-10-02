@@ -52,11 +52,31 @@
       {
         "command": "comline.selectPackage",
         "title": "Comline: Select Active Package"
+      },
+      {
+        "command": "comline.refreshLanguageTargets",
+        "title": "Comline: Refresh Available Code-Generation Targets"
+      },
+      {
+        "command": "comline.formatFile",
+        "title": "Comline: Format File"
+      },
+      {
+        "command": "comline.lintFile",
+        "title": "Comline: Lint File"
+      },
+      {
+        "command": "comline.menu.formatFile",
+        "title": "Format Document"
+      },
+      {
+        "command": "comline.menu.lintFile",
+        "title": "Lint File"
       }
     ],
     "submenus": [
       {
-        "id": "comline.cliMenu",
+        "id": "comline.fileMenu",
         "label": "Comline",
         "icon": {
           "light": "./icons/comline-light.png",
@@ -67,27 +87,29 @@
     "menus": {
       "editor/title": [
         {
-          "submenu": "comline.cliMenu",
+          "submenu": "comline.fileMenu",
           "group": "navigation",
           "when": "resourceLangId == comline || resourceLangId == comline-package"
         }
       ],
-      "comline.cliMenu": [
+      "comline.fileMenu": [
         {
-          "command": "comline.build",
+          "command": "comline.menu.formatFile",
           "group": "1_actions"
         },
         {
-          "command": "comline.check",
+          "command": "comline.menu.lintFile",
           "group": "1_actions"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "comline.menu.formatFile",
+          "when": "false"
         },
         {
-          "command": "comline.generate",
-          "group": "1_actions"
-        },
-        {
-          "command": "comline.clean",
-          "group": "2_cleanup"
+          "command": "comline.menu.lintFile",
+          "when": "false"
         }
       ]
     },

@@ -1,5 +1,7 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import {
   workspace,
   ExtensionContext,
@@ -17,6 +19,16 @@ import {
   QuickPickItem,
   QuickPickItemKind,
   Uri,
+  languages,
+  TextDocument,
+  Position,
+  Range,
+  CompletionItem,
+  CompletionItemKind,
+  MarkdownString,
+  Hover,
+  ThemeColor,
+  TextEditor,
 } from 'vscode';
 import {
   LanguageClient,
@@ -24,6 +36,19 @@ import {
   ServerOptions,
   TransportKind,
 } from 'vscode-languageclient/node';
+import {
+  stripNonCode,
+  keyPathAt,
+  findBlockSpan,
+  findEntryKeys,
+  tokenRangeAround,
+  resolveSchemaAtPath,
+  resolveFieldByPathAndWord,
+  idpValueKindLabel,
+  IdpFieldSchema,
+} from './idpSchema';
+
+const execFileAsync = promisify(execFile);
 
 let client: LanguageClient | undefined;
 
@@ -32,6 +57,49 @@ const SELECTED_PACKAGE_KEY = 'comline.selectedPackageRoot';
 let extensionContext: ExtensionContext;
 let packageStatusBarItem: StatusBarItem;
 let discoveredPackageRoots: string[] = [];
+
+interface GenerationTarget {
+  name: string;
+  version: string;
+}
+
+type TargetsState =
+  | { status: 'loading' }
+  | { status: 'ready'; targets: Map<string, GenerationTarget> }
+  | { status: 'error'; message: string };
+
+let targetsState: TargetsState = { status: 'loading' };
+let targetsPromise: Promise<void> | undefined;
+let unregisteredDecoration: ReturnType<typeof window.createTextEditorDecorationType> | undefined;
+
+function ensureTargetsLoaded(): Promise<void> {
+  if (!targetsPromise) {
+    targetsPromise = fetchTargets().finally(() => {
+      targetsPromise = undefined;
+    });
+  }
+  return targetsPromise;
+}
+
+async function fetchTargets(): Promise<void> {
+  try {
+    const { stdout } = await execFileAsync(resolveCliCommand(), ['targets'], { timeout: 5000 });
+    const targets = new Map<string, GenerationTarget>();
+    for (const line of stdout.split('\n')) {
+      const trimmed = line.trim();
+      const i = trimmed.indexOf('#');
+      if (i < 0) {
+        continue;
+      }
+      targets.set(trimmed, { name: trimmed.slice(0, i), version: trimmed.slice(i + 1) });
+    }
+    targetsState = { status: 'ready', targets };
+  } catch (err) {
+    targetsState = { status: 'error', message: String(err) };
+    console.warn(`Comline: couldn't query code-generation targets ('comline targets' failed): ${err}`);
+  }
+  refreshAllVisibleDecorations();
+}
 
 export async function activate(context: ExtensionContext): Promise<void> {
   extensionContext = context;
@@ -47,6 +115,78 @@ export async function activate(context: ExtensionContext): Promise<void> {
   context.subscriptions.push(configWatcher);
   context.subscriptions.push(workspace.onDidChangeWorkspaceFolders(() => void refreshPackageRoots()));
   void refreshPackageRoots();
+
+  unregisteredDecoration = window.createTextEditorDecorationType({
+    textDecoration: 'underline dashed',
+    color: new ThemeColor('editorWarning.foreground'),
+  });
+  context.subscriptions.push(unregisteredDecoration);
+
+  void ensureTargetsLoaded();
+
+  context.subscriptions.push(
+    languages.registerCompletionItemProvider(
+      { scheme: 'file', language: 'comline-package' },
+      new LanguagesCompletionProvider(),
+      '#'
+    ),
+    languages.registerHoverProvider(
+      { scheme: 'file', language: 'comline-package' },
+      new LanguagesHoverProvider()
+    ),
+    // Stub, `.idp` only — this just wires the plumbing so
+    // `editor.action.formatDocument` (and `comline.formatFile` below)
+    // already do the right thing the moment a real `.idp` formatter exists,
+    // with no further menu/command changes needed. `.ids` is deliberately
+    // NOT included here: the language server already registers a real (if
+    // basic) formatter for it (`document_formatting_provider` in
+    // `backend.rs`, backed by `handlers/formatting.rs`) — adding a second,
+    // no-op client-side provider for the same language would conflict with
+    // or shadow that real one.
+    languages.registerDocumentFormattingEditProvider(
+      { scheme: 'file', language: 'comline-package' },
+      {
+        provideDocumentFormattingEdits: () => [],
+      }
+    ),
+    commands.registerCommand('comline.refreshLanguageTargets', () => {
+      targetsPromise = undefined;
+      void ensureTargetsLoaded();
+    }),
+    commands.registerCommand('comline.formatFile', () =>
+      commands.executeCommand('editor.action.formatDocument')
+    ),
+    commands.registerCommand('comline.lintFile', () => {
+      window.showInformationMessage(
+        'Comline: Lint is not implemented yet. .ids files are already checked live by the ' +
+          'language server (see Problems); .idp checking is planned.'
+      );
+    }),
+    // `comline.menu.*`: same handlers, shorter titles — the "Comline" submenu
+    // this dropdown already groups under makes the "Comline:" Command
+    // Palette prefix redundant here, so these get their own short title
+    // instead of reusing comline.formatFile/lintFile's. Hidden from the
+    // Command Palette itself (package.json's `commandPalette` menu entries)
+    // so they don't show up as confusing near-duplicates of those.
+    commands.registerCommand('comline.menu.formatFile', () =>
+      commands.executeCommand('comline.formatFile')
+    ),
+    commands.registerCommand('comline.menu.lintFile', () =>
+      commands.executeCommand('comline.lintFile')
+    ),
+    workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('comline.cli.mode') || e.affectsConfiguration('comline.cli.customPath')) {
+        targetsPromise = undefined;
+        void ensureTargetsLoaded();
+      }
+    }),
+    window.onDidChangeActiveTextEditor((editor) => {
+      if (editor) {
+        refreshDecorations(editor);
+      }
+    }),
+    workspace.onDidChangeTextDocument((e) => debounceDecorationRefresh(e.document))
+  );
 
   const serverExecutable = getServerExecutable(context);
 
@@ -79,9 +219,17 @@ export async function activate(context: ExtensionContext): Promise<void> {
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [{ scheme: 'file', language: 'comline' }],
+    // `.idp` is synced so parse-error diagnostics flow from the server (see
+    // language-server's `backend.rs::parse_and_publish_diagnostics`) — every
+    // *other* request type (hover/completion/definition/etc.) is explicitly
+    // guarded server-side to no-op for `.idp` (`backend.rs::is_idp`), since
+    // those are already handled correctly client-side (see idpSchema.ts).
+    documentSelector: [
+      { scheme: 'file', language: 'comline' },
+      { scheme: 'file', language: 'comline-package' },
+    ],
     synchronize: {
-      fileEvents: workspace.createFileSystemWatcher('**/*.ids'),
+      fileEvents: workspace.createFileSystemWatcher('**/*.{ids,idp}'),
     },
   };
 
@@ -426,6 +574,185 @@ async function runCliCommand(
   });
 }
 
+class LanguagesCompletionProvider {
+  async provideCompletionItems(doc: TextDocument, pos: Position): Promise<CompletionItem[]> {
+    const clean = stripNonCode(doc.getText());
+    const offset = doc.offsetAt(pos);
+    const path = keyPathAt(clean, offset);
+    const resolved = resolveSchemaAtPath(path);
+    if (!resolved) {
+      return [];
+    }
+
+    const [start, end] = tokenRangeAround(doc.getText(), offset);
+    const range = new Range(doc.positionAt(start), doc.positionAt(end));
+
+    if ('isRegistry' in resolved) {
+      await ensureTargetsLoaded();
+      if (targetsState.status !== 'ready') {
+        return [];
+      }
+      return [...targetsState.targets.values()].map((t) => {
+        const label = `${t.name}#${t.version}`;
+        const item = new CompletionItem(label, CompletionItemKind.EnumMember);
+        item.insertText = label; // the whole opaque token — the grammar never splits it
+        item.range = range;
+        item.detail = 'comline generate target';
+        item.documentation = new MarkdownString(
+          'Registered with the configured `comline` CLI. Write `{}` for the value — ' +
+            'no options here; per-target config lives in `comline.toml`.'
+        );
+        return item;
+      });
+    }
+
+    return resolved.fields.map((field) => {
+      const item = new CompletionItem(field.key, CompletionItemKind.Field);
+      item.insertText = field.key;
+      item.range = range;
+      item.detail = idpValueKindLabel(field.value);
+      item.documentation = new MarkdownString(field.description);
+      return item;
+    });
+  }
+}
+
+const LANGUAGES_PATH = ['code_generation', 'languages'];
+
+/** One `key: type  // summary` line per field, column-aligned, as plain text
+ * meant for a `comline-package`-tagged code block — real tokens (identifiers,
+ * `//` comments) the grammar actually colors, not markdown bold/backticks. */
+function renderFieldsBlock(fields: IdpFieldSchema[]): string {
+  const lines = fields.map((f) => ({
+    keyType: `${f.key}: ${idpValueKindLabel(f.value)}`,
+    summary: f.summary,
+  }));
+  const width = Math.max(...lines.map((l) => l.keyType.length));
+  return lines.map((l) => `${l.keyType.padEnd(width)}  // ${l.summary}`).join('\n');
+}
+
+/** `key: type` colored via the `comline-package` grammar (a real fenced code
+ * block, not markdown bold/backticks — those never get syntax tokenization),
+ * a separator, the full description, then (for a `dictionary`/`map` field) a
+ * "Fields" section — another colored block, one short `summary` per line
+ * rather than each sub-field's full `description`, which reads better in a
+ * packed list; hovering that sub-field directly shows its full description. */
+function renderFieldHover(field: IdpFieldSchema): MarkdownString {
+  const md = new MarkdownString();
+  md.appendCodeblock(`${field.key}: ${idpValueKindLabel(field.value)}`, 'comline-package');
+  md.appendMarkdown('---\n\n');
+  md.appendMarkdown(`${field.description}\n`);
+
+  if (field.value.kind === 'dictionary' && field.value.fields.length > 0) {
+    md.appendMarkdown('\n---\n\n#### Fields\n\n');
+    md.appendCodeblock(renderFieldsBlock(field.value.fields), 'comline-package');
+  } else if (field.value.kind === 'map' && field.value.entry.value.kind === 'dictionary') {
+    md.appendMarkdown(`\n---\n\n#### Each entry (${field.value.entry.key})\n\n`);
+    md.appendMarkdown(`${field.value.entry.description}\n\n`);
+    md.appendCodeblock(renderFieldsBlock(field.value.entry.value.fields), 'comline-package');
+  }
+
+  return md;
+}
+
+class LanguagesHoverProvider {
+  provideHover(doc: TextDocument, pos: Position): Hover | undefined {
+    const text = doc.getText();
+    const clean = stripNonCode(text);
+    const offset = doc.offsetAt(pos);
+    const [start, end] = tokenRangeAround(text, offset);
+    if (start === end) {
+      return undefined;
+    }
+    const word = text.slice(start, end);
+    const range = new Range(doc.positionAt(start), doc.positionAt(end));
+    const path = keyPathAt(clean, offset);
+
+    const field = resolveFieldByPathAndWord(path, word);
+    if (field) {
+      return new Hover(renderFieldHover(field), range);
+    }
+
+    // Not a fixed schema key — the one dynamic case worth a hover is a
+    // code_generation.languages entry (`name#version`), checked against the
+    // live CLI registry.
+    const isLanguagesEntry =
+      path.length === LANGUAGES_PATH.length &&
+      path.every((k, i) => k === LANGUAGES_PATH[i]) &&
+      /^[a-zA-Z0-9_]+(?:::[a-zA-Z0-9_]+)*#[a-zA-Z0-9_.]+$/.test(word);
+    if (!isLanguagesEntry) {
+      return undefined;
+    }
+
+    if (targetsState.status !== 'ready') {
+      return new Hover(
+        new MarkdownString(
+          `Comline: couldn't determine whether \`${word}\` is registered — the configured ` +
+            '`comline` CLI could not be queried.'
+        ),
+        range
+      );
+    }
+
+    const registered = targetsState.targets.has(word);
+    const [name, version] = word.split('#');
+    const body = registered
+      ? `✅ \`${word}\` is registered with the **currently configured** \`comline\` CLI — ` +
+        '`comline generate` can produce this target here.'
+      : `⚠️ \`${word}\` is **not** registered with the currently configured \`comline\` CLI. ` +
+        `Running \`comline generate\` here would fail: \`no generator for '${name}' ` +
+        `(version '${version}')\`. Run \`comline targets\` to see what this CLI build ` +
+        'supports, or check `comline.cli.*` settings.';
+    return new Hover(new MarkdownString(body), range);
+  }
+}
+
+function refreshDecorations(editor: TextEditor): void {
+  if (!unregisteredDecoration || editor.document.languageId !== 'comline-package') {
+    return;
+  }
+  if (targetsState.status !== 'ready') {
+    editor.setDecorations(unregisteredDecoration, []); // fail open — unknown ≠ broken
+    return;
+  }
+
+  const clean = stripNonCode(editor.document.getText());
+  const span = findBlockSpan(clean, LANGUAGES_PATH);
+  const ranges = (span ? findEntryKeys(clean, span) : [])
+    .filter((e) => targetsState.status === 'ready' && !targetsState.targets.has(e.token))
+    .map((e) => new Range(editor.document.positionAt(e.start), editor.document.positionAt(e.end)));
+  editor.setDecorations(unregisteredDecoration, ranges);
+}
+
+function refreshAllVisibleDecorations(): void {
+  for (const editor of window.visibleTextEditors) {
+    refreshDecorations(editor);
+  }
+}
+
+const decorationRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function debounceDecorationRefresh(doc: TextDocument): void {
+  if (doc.languageId !== 'comline-package') {
+    return;
+  }
+  const key = doc.uri.toString();
+  const existing = decorationRefreshTimers.get(key);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  decorationRefreshTimers.set(
+    key,
+    setTimeout(() => {
+      decorationRefreshTimers.delete(key);
+      const editor = window.visibleTextEditors.find((e) => e.document.uri.toString() === key);
+      if (editor) {
+        refreshDecorations(editor);
+      }
+    }, 200)
+  );
+}
+
 function getServerExecutable(context: ExtensionContext): string | null {
   const config = workspace.getConfiguration('comline');
   const mode = config.get<string>('server.mode', 'bundled');
@@ -434,10 +761,10 @@ function getServerExecutable(context: ExtensionContext): string | null {
   switch (mode) {
     case 'bundled':
       return getBundledServerPath(context);
-    
+
     case 'path':
       return 'comline-lsp'; // Will be searched in system PATH
-    
+
     case 'custom':
       if (!customPath) {
         window.showWarningMessage(
@@ -446,7 +773,7 @@ function getServerExecutable(context: ExtensionContext): string | null {
         return getBundledServerPath(context);
       }
       return customPath;
-    
+
     default:
       return getBundledServerPath(context);
   }
@@ -484,7 +811,7 @@ function getBundledServerPath(context: ExtensionContext): string | null {
   window.showWarningMessage(
     `Bundled Comline Language Server not found. Searched:\n- ${platformSpecificPath}\n- ${simplePath}\n\nPlease ensure the binary is available or configure a custom path.`
   );
-  
+
   return null;
 }
 
