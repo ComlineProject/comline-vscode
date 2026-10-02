@@ -17,11 +17,12 @@ All notable changes to the "comline-vscode" extension will be documented in this
   `comline.server.*` shape.
 - Build/Check/Generate/Clean now resolve the right Comline package
   automatically: a single `config.idp` anywhere in the workspace is used
-  with no prompt; with more than one, a status bar item (only shown when
-  there's a real choice to make) shows the active package and opens a menu
-  to switch it or to run a command against any other discovered package
-  without changing the active one. Commands run with real colored CLI
-  output instead of `--plain`.
+  with no prompt; with more than one, the active one is inferred from
+  context instead. A status bar item (shown whenever at least one package
+  is found, so the current context is always visible — not just when
+  there's a choice to make) opens a menu to switch the active package or
+  to run a command against any other discovered package without changing
+  it. Commands run with real colored CLI output instead of `--plain`.
 - `.idp` completion and hover for the whole schema (`specification_version`,
   `code_generation.languages`, `dependencies`, `publish_registries`, and
   each one's own sub-keys) — client-side, no `.idp` language-server support
