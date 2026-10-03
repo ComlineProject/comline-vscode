@@ -28,7 +28,7 @@
       "patterns": [
         {
           "name": "keyword.control.comline",
-          "match": "\\b(struct|enum|protocol|const|use|import|namespace|option)\\b"
+          "match": "\\b(struct|enum|protocol|const|use|import|namespace|option|type)\\b"
         },
         {
           "name": "storage.modifier.comline",
