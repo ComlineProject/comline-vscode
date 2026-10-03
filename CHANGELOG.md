@@ -5,6 +5,10 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ## [Unreleased]
 
 ### Added
+- Syntax highlighting, completion, hover, and outline/go-to-definition/
+  find-references support for `.ids`'s new `type` alias declaration
+  (`type UserId = u64` — fully transparent, erased before code generation,
+  same as Rust's own `type`).
 - Syntax highlighting for `.idp` (package/congregation config) files, as
   the new `comline-package` language — a separate grammar from `.ids`
   since the two share almost no vocabulary (`.idp`'s only real keyword is
