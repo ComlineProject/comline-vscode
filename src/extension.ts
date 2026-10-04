@@ -52,6 +52,9 @@ const execFileAsync = promisify(execFile);
 
 let client: LanguageClient | undefined;
 
+/** The URL scheme of std's schemas, served by the language server (`comline/stdSource`). */
+const STD_SCHEME = 'comline-std';
+
 const SELECTED_PACKAGE_KEY = 'comline.selectedPackageRoot';
 
 let extensionContext: ExtensionContext;
@@ -224,6 +227,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
     documentSelector: [
       { scheme: 'file', language: 'comline' },
       { scheme: 'file', language: 'comline-package' },
+      // std's schemas (see the `comline-std` provider below): hover and
+      // go-to-definition keep working inside them.
+      { scheme: STD_SCHEME, language: 'comline' },
     ],
     synchronize: {
       fileEvents: workspace.createFileSystemWatcher('**/*.{ids,idp}'),
@@ -241,6 +247,21 @@ export async function activate(context: ExtensionContext): Promise<void> {
   );
 
   context.subscriptions.push(
+    // The standard library is embedded in the server and never on disk:
+    // go-to-definition into it lands on a `comline-std:/http.ids` document,
+    // whose text the server serves (`comline/stdSource`). Content-provider
+    // documents are read-only.
+    workspace.registerTextDocumentContentProvider(STD_SCHEME, {
+      async provideTextDocumentContent(uri: Uri): Promise<string> {
+        if (!client) {
+          return '// The Comline language server is not running.';
+        }
+        const source = await client.sendRequest<string | null>('comline/stdSource', {
+          uri: uri.toString(),
+        });
+        return source ?? `// ${uri.toString()} is not part of the standard library.`;
+      },
+    }),
     commands.registerCommand('comline.restartServer', async () => {
       if (!client) {
         return;

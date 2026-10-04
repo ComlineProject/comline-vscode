@@ -5,6 +5,10 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ## [Unreleased]
 
 ### Added
+- Go-to-definition into the standard library (`use std::http::Request`) opens
+  std's schema as a read-only `comline-std:` document, served by the language
+  server (`comline/stdSource`) — std is embedded in the toolchain, never on
+  disk. Hover and go-to-definition keep working inside it.
 - Syntax highlighting, completion, hover, and outline/go-to-definition/
   find-references support for `.ids`'s new `type` alias declaration
   (`type UserId = u64` — fully transparent, erased before code generation,
