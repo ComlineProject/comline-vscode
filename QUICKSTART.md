@@ -44,38 +44,23 @@ F5 opens straight onto `test-workspace/`:
 
 ## Building for Production
 
-### Package for Distribution
+### Package for This Machine
 
 ```bash
-# Development package (no binaries bundled)
+# Bundles whatever bin/comline-lsp points at (see bin/README.md)
 yarn package
-
-# Production package (requires binaries for all platforms)
-yarn package:bundle
 ```
 
-The `package:bundle` command will check for binaries in:
-- `bin/linux-x64/comline-lsp`
-- `bin/darwin-x64/comline-lsp`
-- `bin/darwin-arm64/comline-lsp`
-- `bin/win32-x64/comline-lsp.exe`
+Release packages, one per platform, are built by CI only.
 
 ---
 
 ## CI/CD
 
-Push a Git tag to trigger automatic release:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-The GitHub Actions workflow will:
-1. Build LSP binaries for all platforms
-2. Package the extension with all binaries
-3. Create a GitHub release
-4. (Optional) Publish to VSCode Marketplace
+Releases are cut by a release PR plus a `vX.Y.Z` tag. The workflow builds the
+pinned language server for every platform, smoke-tests each binary, packages one
+`.vsix` per platform, creates the GitHub release and publishes to Open VSX. See
+[RELEASING.md](RELEASING.md) for the steps and the one-time setup.
 
 ---
 
@@ -86,8 +71,7 @@ The GitHub Actions workflow will:
 | `yarn compile` | Compile TypeScript |
 | `yarn watch` | Watch mode for development |
 | `yarn lint` | Run ESLint |
-| `yarn package` | Package extension (dev mode) |
-| `yarn package:bundle` | Package with all binaries |
+| `yarn package` | Package extension for this machine |
 | `yarn link-binary` | Run symlink helper script |
 
 ---

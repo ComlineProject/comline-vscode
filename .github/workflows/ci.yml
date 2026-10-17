@@ -39,6 +39,25 @@ jobs:
           fi
           echo "✅ Compilation successful"
 
+  # A release builds the language server at the rev package.json pins
+  # (`comline.languageServer.rev`). Catch a pin that isn't on GitHub here, in
+  # review, rather than at tag time.
+  language-server-pin:
+    name: Language server pin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: The pinned rev must exist
+        run: |
+          rev=$(node -p "require('./package.json').comline.languageServer.rev")
+          echo "language-server $rev"
+          git init -q pin-check
+          git -C pin-check fetch -q --depth 1 https://github.com/ComlineProject/language-server "$rev" \
+            || { echo "::error::language-server rev $rev is not on GitHub"; exit 1; }
+
   package-test:
     name: Package Test
     runs-on: ubuntu-latest
@@ -61,7 +80,7 @@ jobs:
         run: yarn compile
 
       - name: Test packaging (without binaries)
-        run: npx vsce package --allow-missing-repository --yarn
+        run: npx vsce package --yarn
 
       - name: Upload test package
         uses: actions/upload-artifact@v4

@@ -1,137 +1,290 @@
 name: Release Extension
 
+# Push a `vX.Y.Z` tag on a reviewed `main` to release; see RELEASING.md.
+#
+# A manual run (workflow_dispatch) is a dry run: it builds, smoke-tests and
+# packages every target and uploads the results as artifacts, but creates no
+# release and publishes nothing. Use it before the first tag of a new LSP pin.
+
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  build-binaries:
-    name: Build LSP Binary - ${{ matrix.target }}
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      rev: ${{ steps.meta.outputs.rev }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version and language-server pin
+        id: meta
+        run: |
+          version=$(node -p "require('./package.json').version")
+          rev=$(node -p "require('./package.json').comline.languageServer.rev")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "extension $version, language-server $rev"
+
+      - name: The tag must match package.json
+        if: github.ref_type == 'tag'
+        run: |
+          expected="v${{ steps.meta.outputs.version }}"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version (expected $expected)"
+            exit 1
+          fi
+
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${{ steps.meta.outputs.version }}"
+          # The body of `## [X.Y.Z]`, up to the next `## [` heading.
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && index($0, "## [") == 1 { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ -z "$(tr -d '[:space:]' < notes.md)" ]; then
+            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              echo "::error::CHANGELOG.md has no '## [$version]' section — cut one in the release PR"
+              exit 1
+            fi
+            echo "(dry run: CHANGELOG.md has no '## [$version]' section yet)" > notes.md
+          fi
+          cat notes.md
+
+      - name: The pinned language-server rev must exist
+        run: |
+          git init -q pin-check
+          git -C pin-check fetch -q --depth 1 \
+            https://github.com/ComlineProject/language-server "${{ steps.meta.outputs.rev }}" \
+            || { echo "::error::language-server rev ${{ steps.meta.outputs.rev }} is not on GitHub"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: notes.md
+
+  build:
+    name: Build comline-lsp (${{ matrix.target }})
+    needs: validate
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            platform: linux-x64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            platform: darwin-x64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            platform: darwin-arm64
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            platform: win32-x64
-
+          # Linux is static musl: no glibc floor, so it runs on any distro.
+          - target: linux-x64
+            rust: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+            musl: true
+          - target: linux-arm64
+            rust: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            musl: true
+          - target: darwin-arm64
+            rust: aarch64-apple-darwin
+            os: macos-latest
+          # Cross-compiled on the arm64 runner, smoke-tested under Rosetta.
+          - target: darwin-x64
+            rust: x86_64-apple-darwin
+            os: macos-latest
+            rosetta: true
+          - target: win32-x64
+            rust: x86_64-pc-windows-msvc
+            os: windows-latest
+            exe: .exe
     steps:
-      - name: Checkout language server
+      - name: Checkout extension (for the smoke test)
+        uses: actions/checkout@v4
+
+      - name: Checkout language-server at the pinned rev
         uses: actions/checkout@v4
         with:
           repository: ComlineProject/language-server
+          ref: ${{ needs.validate.outputs.rev }}
           path: language-server
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust }}
 
-      - name: Build language server
-        working-directory: language-server
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Prepare binary (Unix)
-        if: runner.os != 'Windows'
-        working-directory: language-server
+      - name: musl C toolchain
+        if: matrix.musl
         run: |
-          mkdir -p ../binaries/${{ matrix.platform }}
-          cp target/${{ matrix.target }}/release/comline-lsp ../binaries/${{ matrix.platform }}/
-          chmod +x ../binaries/${{ matrix.platform }}/comline-lsp
+          sudo apt-get update -q
+          sudo apt-get install -yq musl-tools
+          # comline-core compiles its tree-sitter grammar from C at build time.
+          echo "CC_$(echo '${{ matrix.rust }}' | tr '-' '_')=musl-gcc" >> "$GITHUB_ENV"
 
-      - name: Prepare binary (Windows)
-        if: runner.os == 'Windows'
-        working-directory: language-server
-        run: |
-          New-Item -ItemType Directory -Force -Path ../binaries/${{ matrix.platform }}
-          Copy-Item target/${{ matrix.target }}/release/comline-lsp.exe ../binaries/${{ matrix.platform }}/
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+      - uses: Swatinem/rust-cache@v2
         with:
-          name: binary-${{ matrix.platform }}
-          path: binaries/${{ matrix.platform }}/*
+          workspaces: language-server
+          key: ${{ matrix.rust }}
 
-  package-extension:
-    name: Package Extension
-    needs: build-binaries
-    runs-on: ubuntu-latest
+      - name: Build
+        working-directory: language-server
+        run: cargo build --release --target ${{ matrix.rust }}
 
-    steps:
-      - name: Checkout VSCode extension
-        uses: actions/checkout@v4
+      - name: Stage the binary
+        run: |
+          mkdir -p out
+          cp "language-server/target/${{ matrix.rust }}/release/comline-lsp${{ matrix.exe }}" out/
+          ls -l out/
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Linux binary must be static
+        if: matrix.musl
+        run: |
+          file out/comline-lsp
+          file out/comline-lsp | grep -Eq 'static(ally|-pie) linked' \
+            || { echo "::error::comline-lsp is dynamically linked"; exit 1; }
+
+      - uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: 'yarn'
 
-      - name: Install dependencies
-        run: yarn install --frozen-lockfile
+      - name: Rosetta
+        if: matrix.rosetta
+        run: |
+          arch -x86_64 /usr/bin/true 2>/dev/null \
+            || sudo softwareupdate --install-rosetta --agree-to-license
 
-      - name: Download all binaries
+      - name: Smoke test
+        run: node scripts/smoke-lsp.mjs "out/comline-lsp${{ matrix.exe }}" ${{ matrix.rosetta && '--arch-x86_64' || '' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lsp-${{ matrix.target }}
+          path: out/comline-lsp${{ matrix.exe }}
+          if-no-files-found: error
+
+  package:
+    name: Package (${{ matrix.target }})
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # `universal` carries no binary: the fallback an editor installs on any
+        # platform not listed, where the user points comline.server.* at a
+        # comline-lsp of their own.
+        target: [linux-x64, linux-arm64, darwin-arm64, darwin-x64, win32-x64, universal]
+    env:
+      VSIX: comline-vscode-${{ needs.validate.outputs.version }}-${{ matrix.target }}.vsix
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: yarn
+
+      - run: yarn install --frozen-lockfile
+
+      - name: Place the binary
+        if: matrix.target != 'universal'
         uses: actions/download-artifact@v4
         with:
-          path: downloaded-binaries
+          name: lsp-${{ matrix.target }}
+          path: bin/${{ matrix.target }}
 
-      - name: Organize binaries
+      - name: Package
         run: |
-          mkdir -p bin
-          for platform_dir in downloaded-binaries/binary-*; do
-            platform=$(basename "$platform_dir" | sed 's/binary-//')
-            mkdir -p "bin/$platform"
-            cp "$platform_dir"/* "bin/$platform/"
-          done
-          ls -R bin/
-
-      - name: Compile TypeScript
-        run: yarn compile
-
-      - name: Package extension
-        run: npx vsce package --allow-missing-repository --yarn
-
-      - name: Get version
-        id: get_version
-        run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          chmod +x bin/*/comline-lsp 2>/dev/null || true
+          if [ "${{ matrix.target }}" = universal ]; then
+            npx vsce package --yarn -o "$VSIX"
           else
-            echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+            npx vsce package --yarn --target "${{ matrix.target }}" -o "$VSIX"
           fi
 
-      - name: Upload VSIX artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: vsix-package
-          path: "*.vsix"
+      - name: Verify the package holds exactly its own binary
+        run: |
+          found=$(unzip -Z1 "$VSIX" | grep -E '(^|/)comline-lsp(\.exe)?$' || true)
+          echo "binaries in $VSIX: ${found:-(none)}"
+          if [ "${{ matrix.target }}" = universal ]; then
+            [ -z "$found" ] || { echo "::error::the universal package must carry no binary"; exit 1; }
+          else
+            name=comline-lsp; [ "${{ matrix.target }}" = win32-x64 ] && name=comline-lsp.exe
+            [ "$found" = "extension/bin/${{ matrix.target }}/$name" ] \
+              || { echo "::error::expected exactly extension/bin/${{ matrix.target }}/$name"; exit 1; }
+          fi
 
-      - name: Create Release
-        if: github.ref_type == 'tag'
-        uses: softprops/action-gh-release@v1
+      - uses: actions/upload-artifact@v4
         with:
-          files: "*.vsix"
-          generate_release_notes: true
+          name: vsix-${{ matrix.target }}
+          path: ${{ env.VSIX }}
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    if: github.ref_type == 'tag'
+    needs: [validate, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vsix-*
+          merge-multiple: true
+          path: dist
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum *.vsix | tee SHA256SUMS
+
+      - name: Create the release (or refresh its assets on a re-run)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* \
+              --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "$GITHUB_REF_NAME" --notes-file notes.md
+          fi
 
-      - name: Publish to VSCode Marketplace
-        if: github.ref_type == 'tag' && github.event_name != 'workflow_dispatch'
-        run: npx vsce publish -p ${{ secrets.VSCE_PAT }}
-        continue-on-error: true
+  publish-openvsx:
+    name: Publish to Open VSX
+    if: github.ref_type == 'tag'
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vsix-*
+          merge-multiple: true
+          path: dist
 
-      - name: Publish to Open VSX
-        if: github.ref_type == 'tag' && github.event_name != 'workflow_dispatch'
-        run: npx ovsx publish -p ${{ secrets.OVSX_PAT }}
-        continue-on-error: true
+      - name: Publish every package
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::error::secret OVSX_PAT is not set — see RELEASING.md"
+            exit 1
+          fi
+          # --skip-duplicate: a re-run after a partial failure skips what landed.
+          for f in dist/*.vsix; do
+            echo "publishing $f"
+            npx --yes ovsx@1.3.0 publish --packagePath "$f" --skip-duplicate -p "$OVSX_PAT"
+          done

@@ -49,22 +49,13 @@ cargo build --release
 cp target/release/comline-lsp /path/to/comline-vscode/bin/
 ```
 
-## Multi-Platform Packaging
+## Release Packages
 
-For multi-platform `.vsix` packages, you need binaries for each platform:
+Releases are built by CI only (`.github/workflows/release.yml`), never by hand.
+Each platform gets its own `.vsix` holding a single binary at
+`bin/<platform>/comline-lsp` (`comline-lsp.exe` on Windows), built from the
+language-server rev pinned in `package.json` under `comline.languageServer.rev`.
+See [RELEASING.md](../RELEASING.md).
 
-```
-bin/
-├── linux-x64/
-│   └── comline-lsp
-├── darwin-x64/
-│   └── comline-lsp
-├── darwin-arm64/
-│   └── comline-lsp
-└── win32-x64/
-    └── comline-lsp.exe
-```
-
-Use the provided build scripts (see `scripts/package.sh`) to automate this process.
-
-The extension automatically detects platform and architecture at runtime.
+At runtime the extension looks for `bin/<platform>/comline-lsp` first, then for
+the single development binary `bin/comline-lsp` described above.
