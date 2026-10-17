@@ -10,3 +10,9 @@ tsconfig.json
 assets/icon-font-src/**
 .fantasticonrc.js
 fonts/*.json
+# Repo tooling and dev fixtures — nothing the installed extension reads.
+.github/**
+scripts/**
+test-workspace/**
+bin/README.md
+RELEASING.md
