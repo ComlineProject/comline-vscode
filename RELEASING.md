@@ -5,6 +5,38 @@ A release is a reviewed PR plus a tag. Pushing the tag runs
 language server for every platform, smoke-tests each binary, packages one
 `.vsix` per platform, creates the GitHub release and publishes to Open VSX.
 
+## Channels
+
+The same workflow makes four kinds of build. `scripts/release-meta.sh`
+decides which from the event that started it.
+
+| channel | started by | version | GitHub | Open VSX |
+|---|---|---|---|---|
+| **stable** | you push `vX.Y.Z` | `X.Y.Z` (= `package.json`) | release, marked latest | **published** |
+| **pre** | you push `vX.Y.Z-rc.1`, `-beta.2`, … | the tag | prerelease | never |
+| **dev** | every push to `main` | `X.Y.Z-dev.N` (CI tags it) | prerelease | never |
+| **dry** | *Run workflow* by hand | `package.json` | nothing (artifacts only) | never |
+
+**Dev builds** are prereleases of the next unreleased version. That is
+`package.json`'s version until it is tagged, then the patch after it:
+`0.1.0-dev.N` before `v0.1.0` exists, `0.1.1-dev.N` after. `N` counts the
+commits since the last stable tag, so it only grows along `main`. In semver a
+dev build sorts below the release it leads up to (`0.1.1-dev.4 < 0.1.1`).
+Only the newest 10 are kept: older dev prereleases are deleted along with
+their tags. A commit that already carries a stable tag gets no dev build.
+`-dev.N` tags are CI's; a pushed one starts nothing.
+
+**Prereleases** (`-rc`, `-beta`, …) must lead up to a version that isn't
+released yet: `v0.2.0-rc.1` is refused once `v0.2.0` exists. Their notes come
+from `## [X.Y.Z]` in `CHANGELOG.md` if there is one, else from
+`## [Unreleased]`. Tag the commit you want tested:
+```bash
+git tag v0.2.0-rc.1 origin/main && git push origin v0.2.0-rc.1
+```
+
+Neither dev builds nor prereleases are ever published to Open VSX. Install
+one by downloading its `.vsix` from the releases page.
+
 ## What a release contains
 
 | package | bundled server |
@@ -50,9 +82,10 @@ The `comline` CLI is **not** bundled. Build/Check/Generate/Clean need it on
 
    Merge it.
 
-2. **Dry run** (recommended whenever the pin moved): Actions → *Release
-   Extension* → *Run workflow* on `main`. It builds, tests and packages every
-   target and uploads the packages as artifacts, but publishes nothing.
+2. **Check the dev build** of that merge commit, which CI has already made as
+   a prerelease: install its `.vsix` and try it. A dry run (Actions →
+   *Release Extension* → *Run workflow*) builds the same packages without
+   creating a prerelease. Use it to test a branch before it merges.
 
 3. **Tag the merge commit**:
    ```bash
@@ -62,8 +95,9 @@ The `comline` CLI is **not** bundled. Build/Check/Generate/Clean need it on
    ```
 
 The workflow refuses to release if:
-- the tag isn't `v` + the `package.json` version
-- `CHANGELOG.md` has no `## [X.Y.Z]` section
+- a stable tag isn't `v` + the `package.json` version
+- a stable tag has no `## [X.Y.Z]` section in `CHANGELOG.md`
+- a prerelease tag leads up to an already-released version
 - the pinned rev doesn't exist
 - any binary fails its smoke test (start, `initialize`, a diagnostic for a
   broken schema, clean exit)
