@@ -1,14 +1,24 @@
 name: Release Extension
 
-# Push a `vX.Y.Z` tag on a reviewed `main` to release; see RELEASING.md.
+# One workflow, four kinds of run (scripts/release-meta.sh decides which; see
+# RELEASING.md):
 #
-# A manual run (workflow_dispatch) is a dry run: it builds, smoke-tests and
-# packages every target and uploads the results as artifacts, but creates no
-# release and publishes nothing. Use it before the first tag of a new LSP pin.
+#   tag vX.Y.Z         stable: GitHub release + Open VSX
+#   tag vX.Y.Z-rc.1…   pre:    GitHub prerelease, never published
+#   push to main       dev:    CI tags vX.Y.Z-dev.N, GitHub prerelease, never
+#                              published; only the newest 10 are kept
+#   manual dispatch    dry:    build, test and package; no release
+#
+# Every kind builds, smoke-tests and packages the same six packages.
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+      # dev tags are created by this workflow, never pushed to start it
+      - "!v*-dev.*"
   workflow_dispatch:
 
 permissions:
@@ -23,55 +33,40 @@ jobs:
     name: Validate
     runs-on: ubuntu-latest
     outputs:
+      channel: ${{ steps.meta.outputs.channel }}
       version: ${{ steps.meta.outputs.version }}
-      rev: ${{ steps.meta.outputs.rev }}
+      tag: ${{ steps.meta.outputs.tag }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      rev: ${{ steps.pin.outputs.rev }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # release-meta.sh counts commits and reads tags
+          fetch-depth: 0
 
-      - name: Read version and language-server pin
+      - name: What kind of run is this?
         id: meta
+        # Not `| tee`: the default shell has no pipefail, so a refusal from the
+        # script would vanish behind tee's success.
         run: |
-          version=$(node -p "require('./package.json').version")
-          rev=$(node -p "require('./package.json').comline.languageServer.rev")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "rev=$rev" >> "$GITHUB_OUTPUT"
-          echo "extension $version, language-server $rev"
-
-      - name: The tag must match package.json
-        if: github.ref_type == 'tag'
-        run: |
-          expected="v${{ steps.meta.outputs.version }}"
-          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match package.json version (expected $expected)"
-            exit 1
-          fi
-
-      - name: Release notes from CHANGELOG.md
-        run: |
-          version="${{ steps.meta.outputs.version }}"
-          # The body of `## [X.Y.Z]`, up to the next `## [` heading.
-          awk -v v="$version" '
-            index($0, "## [" v "]") == 1 { on = 1; next }
-            on && index($0, "## [") == 1 { exit }
-            on { print }
-          ' CHANGELOG.md > notes.md
-          if [ -z "$(tr -d '[:space:]' < notes.md)" ]; then
-            if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-              echo "::error::CHANGELOG.md has no '## [$version]' section — cut one in the release PR"
-              exit 1
-            fi
-            echo "(dry run: CHANGELOG.md has no '## [$version]' section yet)" > notes.md
-          fi
-          cat notes.md
+          scripts/release-meta.sh > meta.txt
+          cat meta.txt
+          cat meta.txt >> "$GITHUB_OUTPUT"
+          echo "--- notes.md"
+          cat notes.md 2>/dev/null || echo "(none: nothing to build)"
 
       - name: The pinned language-server rev must exist
+        id: pin
         run: |
+          rev=$(node -p "require('./package.json').comline.languageServer.rev")
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "language-server $rev"
           git init -q pin-check
-          git -C pin-check fetch -q --depth 1 \
-            https://github.com/ComlineProject/language-server "${{ steps.meta.outputs.rev }}" \
-            || { echo "::error::language-server rev ${{ steps.meta.outputs.rev }} is not on GitHub"; exit 1; }
+          git -C pin-check fetch -q --depth 1 https://github.com/ComlineProject/language-server "$rev" \
+            || { echo "::error::language-server rev $rev is not on GitHub"; exit 1; }
 
       - uses: actions/upload-artifact@v4
+        if: steps.meta.outputs.channel != 'skip'
         with:
           name: release-notes
           path: notes.md
@@ -79,6 +74,7 @@ jobs:
   build:
     name: Build comline-lsp (${{ matrix.target }})
     needs: validate
+    if: needs.validate.outputs.channel != 'skip'
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -195,6 +191,11 @@ jobs:
 
       - run: yarn install --frozen-lockfile
 
+      # A dev or pre build carries its own version (0.1.1-dev.4, 0.2.0-rc.1);
+      # for stable and dry runs this is package.json's version already.
+      - name: Set the version
+        run: npm pkg set version="${{ needs.validate.outputs.version }}"
+
       - name: Place the binary
         if: matrix.target != 'universal'
         uses: actions/download-artifact@v4
@@ -231,7 +232,7 @@ jobs:
 
   release:
     name: GitHub release
-    if: github.ref_type == 'tag'
+    if: contains(fromJSON('["stable", "pre", "dev"]'), needs.validate.outputs.channel)
     needs: [validate, package]
     runs-on: ubuntu-latest
     permissions:
@@ -254,19 +255,55 @@ jobs:
       - name: Create the release (or refresh its assets on a re-run)
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          CHANNEL: ${{ needs.validate.outputs.channel }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"
-          else
-            gh release create "$GITHUB_REF_NAME" dist/* \
-              --repo "$GITHUB_REPOSITORY" --verify-tag \
-              --title "$GITHUB_REF_NAME" --notes-file notes.md
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+            exit 0
           fi
+          case $CHANNEL in
+            # a human pushed this tag; it must already exist
+            stable) flags=(--verify-tag --latest) ;;
+            pre) flags=(--verify-tag --prerelease --latest=false) ;;
+            # CI creates the tag, on exactly the commit it built
+            dev) flags=(--target "$GITHUB_SHA" --prerelease --latest=false) ;;
+          esac
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" --notes-file notes.md "${flags[@]}"
+
+  prune-dev:
+    name: Prune old dev prereleases
+    if: needs.validate.outputs.channel == 'dev'
+    needs: [validate, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEEP: 10
+    steps:
+      # Only `-dev.N` prereleases; stable releases and -rc/-beta prereleases
+      # are never touched. Deletes the tag with the release.
+      - name: Keep the newest ${{ env.KEEP }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 1000 \
+            --json tagName,isPrerelease,createdAt \
+            --jq '[.[] | select(.isPrerelease and (.tagName | test("-dev\\.[0-9]+$")))]
+                  | sort_by(.createdAt) | reverse | .['"$KEEP"':] | .[].tagName' > stale.txt
+          if [ ! -s stale.txt ]; then
+            echo "nothing to prune"
+            exit 0
+          fi
+          while read -r tag; do
+            echo "deleting $tag"
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          done < stale.txt
 
   publish-openvsx:
     name: Publish to Open VSX
-    if: github.ref_type == 'tag'
-    needs: release
+    if: needs.validate.outputs.channel == 'stable'
+    needs: [validate, release]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

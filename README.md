@@ -73,6 +73,11 @@ your platform.
 On a platform without its own package, install the `-universal` one. It has no
 bundled server, so set `comline.server.mode` to `path` or `custom` (below).
 
+### Development builds
+Every change to `main` is built as a GitHub prerelease (`v0.1.1-dev.N`), and
+release candidates appear as `-rc.N` prereleases. Neither is published to Open
+VSX: install them from releases the same way. Expect them to be less tested.
+
 ### From the VS Code Marketplace (Coming Soon)
 Not published there yet; use a `.vsix` from releases.
 
