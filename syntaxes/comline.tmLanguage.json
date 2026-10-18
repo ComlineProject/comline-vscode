@@ -76,6 +76,28 @@
     "strings": {
       "patterns": [
         {
+          "name": "string.interpolated.comline",
+          "begin": "\\bf\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.comline",
+              "match": "\\\\([\"\\\\/bfnrt]|u[0-9a-fA-F]{4})|\\{\\{|\\}\\}"
+            },
+            {
+              "name": "meta.interpolation.comline",
+              "begin": "\\{",
+              "end": "\\}",
+              "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.comline" } },
+              "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.comline" } },
+              "contentName": "variable.other.comline",
+              "patterns": [
+                { "name": "punctuation.accessor.comline", "match": "\\." }
+              ]
+            }
+          ]
+        },
+        {
           "name": "string.quoted.double.comline",
           "begin": "\"",
           "end": "\"",

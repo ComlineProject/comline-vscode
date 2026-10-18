@@ -4,6 +4,14 @@ All notable changes to the "comline-vscode" extension will be documented in this
 
 ## [Unreleased]
 
+### Added
+- `f"..."` strings highlight as interpolated, each `{path}` placeholder
+  apart; `{{` and `}}` as escapes.
+
+### Fixed
+- A lone `<` or `>` (a comparison, `->`) no longer shows as an unmatched
+  bracket. Comline has no angle brackets.
+
 ## [0.1.0] - 2026-10-18
 
 The first release.

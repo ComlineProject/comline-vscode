@@ -1,5 +1,5 @@
 error NotFound {
-    message = "no entry for {self.key}"
+    message = f"no entry for {self.key}"
     key: string
 }
 
