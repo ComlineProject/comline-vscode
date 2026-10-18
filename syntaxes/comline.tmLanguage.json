@@ -37,11 +37,27 @@
       "patterns": [
         {
           "name": "keyword.control.comline",
-          "match": "\\b(struct|enum|protocol|const|use|import|namespace|option|type)\\b"
+          "match": "\\b(struct|enum|protocol|error|const|type|settings|validator|use|import)\\b"
+        },
+        {
+          "name": "keyword.other.comline",
+          "match": "\\b(function|validate|assert|for|as|union)\\b"
+        },
+        {
+          "name": "keyword.operator.word.comline",
+          "match": "\\b(and|or)\\b"
         },
         {
           "name": "storage.modifier.comline",
-          "match": "\\b(pub|mut)\\b"
+          "match": "\\boptional\\b"
+        },
+        {
+          "name": "variable.language.comline",
+          "match": "\\b(self|parent|package)\\b"
+        },
+        {
+          "name": "constant.language.comline",
+          "match": "\\b(true|false)\\b"
         }
       ]
     },
@@ -49,11 +65,7 @@
       "patterns": [
         {
           "name": "support.type.primitive.comline",
-          "match": "\\b(i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64|bool|string|bytes)\\b"
-        },
-        {
-          "name": "support.type.collection.comline",
-          "match": "\\b(list|map|set|option)\\b"
+          "match": "\\b(s8|s16|s32|s64|u8|u16|u32|u64|f32|f64|bool|string)\\b"
         },
         {
           "name": "entity.name.type.comline",
