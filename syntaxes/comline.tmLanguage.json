@@ -95,8 +95,12 @@
     "operators": {
       "patterns": [
         {
+          "name": "keyword.operator.arrow.comline",
+          "match": "->"
+        },
+        {
           "name": "keyword.operator.comline",
-          "match": "[=:,<>?]"
+          "match": "[=:,<>?!]"
         }
       ]
     },

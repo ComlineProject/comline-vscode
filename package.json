@@ -154,7 +154,10 @@
       {
         "language": "comline",
         "scopeName": "source.comline",
-        "path": "./syntaxes/comline.tmLanguage.json"
+        "path": "./syntaxes/comline.tmLanguage.json",
+        "unbalancedBracketScopes": [
+          "keyword.operator.arrow.comline"
+        ]
       },
       {
         "language": "comline-package",
