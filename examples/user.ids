@@ -22,7 +22,7 @@ enum UserRole {
 }
 
 error UserNotFound {
-    message = "no user with id {self.id}"
+    message = f"no user with id {self.id}"
     id: u64
 }
 

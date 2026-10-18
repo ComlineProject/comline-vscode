@@ -1,7 +1,7 @@
 use types::Message
 
 error Rejected {
-    message = "rejected: {self.reason}"
+    message = f"rejected: {self.reason}"
     reason: string
 }
 
