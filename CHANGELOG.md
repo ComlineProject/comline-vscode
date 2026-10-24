@@ -11,6 +11,17 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ### Fixed
 - A lone `<` or `>` (a comparison, `->`) no longer shows as an unmatched
   bracket. Comline has no angle brackets.
+- Accepting a `code_generation.languages` completion inserts only the
+  target (`rust#1.85.0`), not the versions `comline targets` lists after it;
+  those now show as the item's detail.
+- `.idp` keys (`specification_version`, `languages`, a dependency's name,
+  `path`) highlight as property names, apart from the `congregation`
+  keyword.
+
+### Removed
+- The dashed underline on a declared target, and the target hover. They
+  matched `name#version` exactly, but a version is a minimum; the language
+  server's diagnostics and hover check a target as `comline build` does.
 
 ## [0.1.0] - 2026-10-18
 
