@@ -178,11 +178,6 @@ export function idpValueKindLabel(value: IdpValueKind): string {
   }
 }
 
-export interface BlockSpan {
-  start: number;
-  end: number;
-}
-
 /**
  * Blanks `//` line comments, `/* *\/` block comments, and `"..."` string
  * contents to spaces — preserving length, offsets, and newlines — so brace
@@ -333,37 +328,6 @@ export function keyPathAt(cleanText: string, offset: number): string[] {
     }
   }
   return best ? best.path : [];
-}
-
-/** The span of the block whose key-path exactly matches `path` — used to
- * locate `code_generation.languages`'s block for decoration/entry scanning. */
-export function findBlockSpan(cleanText: string, path: string[]): BlockSpan | undefined {
-  const match = scanBlocks(cleanText).find(
-    (b) => b.path.length === path.length && b.path.every((k, i) => k === path[i])
-  );
-  return match ? { start: match.start, end: match.end } : undefined;
-}
-
-export interface EntryKey {
-  token: string;
-  start: number;
-  end: number;
-}
-
-const ENTRY_KEY_PATTERN = '([a-zA-Z0-9_]+(?:::[a-zA-Z0-9_]+)*#[a-zA-Z0-9_.]+)(?=\\s*=\\s*\\{)';
-
-/** Entry keys (`name#version`) inside a span, each immediately followed by
- * `= {` — matches `.idp`'s `ItemVersionMeta` leaf pattern. */
-export function findEntryKeys(cleanText: string, span: BlockSpan): EntryKey[] {
-  const re = new RegExp(ENTRY_KEY_PATTERN, 'g');
-  const slice = cleanText.slice(span.start, span.end);
-  const results: EntryKey[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(slice))) {
-    const start = span.start + m.index;
-    results.push({ token: m[1], start, end: start + m[1].length });
-  }
-  return results;
 }
 
 /** Manual token-range scan (`[A-Za-z0-9_:.#]`) around an offset — `#` isn't

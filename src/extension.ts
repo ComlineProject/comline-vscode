@@ -27,8 +27,6 @@ import {
   CompletionItemKind,
   MarkdownString,
   Hover,
-  ThemeColor,
-  TextEditor,
 } from 'vscode';
 import {
   LanguageClient,
@@ -39,8 +37,6 @@ import {
 import {
   stripNonCode,
   keyPathAt,
-  findBlockSpan,
-  findEntryKeys,
   tokenRangeAround,
   resolveSchemaAtPath,
   resolveFieldByPathAndWord,
@@ -64,6 +60,8 @@ let discoveredPackageRoots: string[] = [];
 interface GenerationTarget {
   name: string;
   version: string;
+  /** What `comline targets` says after the token: the versions it handles. */
+  versions: string;
 }
 
 type TargetsState =
@@ -73,7 +71,6 @@ type TargetsState =
 
 let targetsState: TargetsState = { status: 'loading' };
 let targetsPromise: Promise<void> | undefined;
-let unregisteredDecoration: ReturnType<typeof window.createTextEditorDecorationType> | undefined;
 
 function ensureTargetsLoaded(): Promise<void> {
   if (!targetsPromise) {
@@ -88,20 +85,22 @@ async function fetchTargets(): Promise<void> {
   try {
     const { stdout } = await execFileAsync(resolveCliCommand(), ['targets'], { timeout: 5000 });
     const targets = new Map<string, GenerationTarget>();
+    // `rust#1.85.0  (1.85.0 or later; verified up to 1.99, ...)`: the token,
+    // then what versions its generator handles.
     for (const line of stdout.split('\n')) {
-      const trimmed = line.trim();
-      const i = trimmed.indexOf('#');
-      if (i < 0) {
+      const match = /^\s*(\S+)\s*(?:\((.*)\))?\s*$/.exec(line);
+      const token = match?.[1];
+      const i = token?.indexOf('#') ?? -1;
+      if (!token || i < 0) {
         continue;
       }
-      targets.set(trimmed, { name: trimmed.slice(0, i), version: trimmed.slice(i + 1) });
+      targets.set(token, { name: token.slice(0, i), version: token.slice(i + 1), versions: match?.[2] ?? '' });
     }
     targetsState = { status: 'ready', targets };
   } catch (err) {
     targetsState = { status: 'error', message: String(err) };
     console.warn(`Comline: couldn't query code-generation targets ('comline targets' failed): ${err}`);
   }
-  refreshAllVisibleDecorations();
 }
 
 export async function activate(context: ExtensionContext): Promise<void> {
@@ -119,12 +118,10 @@ export async function activate(context: ExtensionContext): Promise<void> {
   context.subscriptions.push(workspace.onDidChangeWorkspaceFolders(() => void refreshPackageRoots()));
   void refreshPackageRoots();
 
-  unregisteredDecoration = window.createTextEditorDecorationType({
-    textDecoration: 'underline dashed',
-    color: new ThemeColor('editorWarning.foreground'),
-  });
-  context.subscriptions.push(unregisteredDecoration);
-
+  // Whether a declared target is handled - unknown language, below the
+  // generator's floor or a dependency's, past what it verified - is the
+  // language server's diagnostics and hover: it resolves through the same
+  // registry `comline build` does.
   void ensureTargetsLoaded();
 
   context.subscriptions.push(
@@ -179,13 +176,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
         targetsPromise = undefined;
         void ensureTargetsLoaded();
       }
-    }),
-    window.onDidChangeActiveTextEditor((editor) => {
-      if (editor) {
-        refreshDecorations(editor);
-      }
-    }),
-    workspace.onDidChangeTextDocument((e) => debounceDecorationRefresh(e.document))
+    })
   );
 
   const serverExecutable = getServerExecutable(context);
@@ -620,10 +611,11 @@ class LanguagesCompletionProvider {
         const item = new CompletionItem(label, CompletionItemKind.EnumMember);
         item.insertText = label; // the whole opaque token — the grammar never splits it
         item.range = range;
-        item.detail = 'comline generate target';
+        item.detail = t.versions || 'comline generate target';
         item.documentation = new MarkdownString(
-          'Registered with the configured `comline` CLI. Write `{}` for the value — ' +
-            'no options here; per-target config lives in `comline.toml`.'
+          'Registered with the configured `comline` CLI. The version is a minimum: any later ' +
+            'one the generator handles works too. Write `{}` for the value — no options here; ' +
+            'per-target config lives in `comline.toml`.'
         );
         return item;
       });
@@ -639,8 +631,6 @@ class LanguagesCompletionProvider {
     });
   }
 }
-
-const LANGUAGES_PATH = ['code_generation', 'languages'];
 
 /** One `key: type  // summary` line per field, column-aligned, as plain text
  * meant for a `comline-package`-tagged code block — real tokens (identifiers,
@@ -691,89 +681,11 @@ class LanguagesHoverProvider {
     const range = new Range(doc.positionAt(start), doc.positionAt(end));
     const path = keyPathAt(clean, offset);
 
+    // A code_generation.languages entry (`name#version`) is the language
+    // server's hover: what its generator supports at that version.
     const field = resolveFieldByPathAndWord(path, word);
-    if (field) {
-      return new Hover(renderFieldHover(field), range);
-    }
-
-    // Not a fixed schema key — the one dynamic case worth a hover is a
-    // code_generation.languages entry (`name#version`), checked against the
-    // live CLI registry.
-    const isLanguagesEntry =
-      path.length === LANGUAGES_PATH.length &&
-      path.every((k, i) => k === LANGUAGES_PATH[i]) &&
-      /^[a-zA-Z0-9_]+(?:::[a-zA-Z0-9_]+)*#[a-zA-Z0-9_.]+$/.test(word);
-    if (!isLanguagesEntry) {
-      return undefined;
-    }
-
-    if (targetsState.status !== 'ready') {
-      return new Hover(
-        new MarkdownString(
-          `Comline: couldn't determine whether \`${word}\` is registered — the configured ` +
-            '`comline` CLI could not be queried.'
-        ),
-        range
-      );
-    }
-
-    const registered = targetsState.targets.has(word);
-    const [name, version] = word.split('#');
-    const body = registered
-      ? `✅ \`${word}\` is registered with the **currently configured** \`comline\` CLI — ` +
-        '`comline generate` can produce this target here.'
-      : `⚠️ \`${word}\` is **not** registered with the currently configured \`comline\` CLI. ` +
-        `Running \`comline generate\` here would fail: \`no generator for '${name}' ` +
-        `(version '${version}')\`. Run \`comline targets\` to see what this CLI build ` +
-        'supports, or check `comline.cli.*` settings.';
-    return new Hover(new MarkdownString(body), range);
+    return field ? new Hover(renderFieldHover(field), range) : undefined;
   }
-}
-
-function refreshDecorations(editor: TextEditor): void {
-  if (!unregisteredDecoration || editor.document.languageId !== 'comline-package') {
-    return;
-  }
-  if (targetsState.status !== 'ready') {
-    editor.setDecorations(unregisteredDecoration, []); // fail open — unknown ≠ broken
-    return;
-  }
-
-  const clean = stripNonCode(editor.document.getText());
-  const span = findBlockSpan(clean, LANGUAGES_PATH);
-  const ranges = (span ? findEntryKeys(clean, span) : [])
-    .filter((e) => targetsState.status === 'ready' && !targetsState.targets.has(e.token))
-    .map((e) => new Range(editor.document.positionAt(e.start), editor.document.positionAt(e.end)));
-  editor.setDecorations(unregisteredDecoration, ranges);
-}
-
-function refreshAllVisibleDecorations(): void {
-  for (const editor of window.visibleTextEditors) {
-    refreshDecorations(editor);
-  }
-}
-
-const decorationRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
-
-function debounceDecorationRefresh(doc: TextDocument): void {
-  if (doc.languageId !== 'comline-package') {
-    return;
-  }
-  const key = doc.uri.toString();
-  const existing = decorationRefreshTimers.get(key);
-  if (existing) {
-    clearTimeout(existing);
-  }
-  decorationRefreshTimers.set(
-    key,
-    setTimeout(() => {
-      decorationRefreshTimers.delete(key);
-      const editor = window.visibleTextEditors.find((e) => e.document.uri.toString() === key);
-      if (editor) {
-        refreshDecorations(editor);
-      }
-    }, 200)
-  );
 }
 
 function getServerExecutable(context: ExtensionContext): string | null {
