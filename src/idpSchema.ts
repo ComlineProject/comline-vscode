@@ -126,6 +126,37 @@ export const IDP_ROOT_FIELDS: IdpFieldSchema[] = [
     },
   },
   {
+    key: 'wire',
+    summary: 'The wire format and framing both ends speak',
+    description:
+      "The package's wire defaults, which both ends of a connection must agree on: " +
+      '`wire = { format = "packed@1" framing = "datagram@2" }`. Leaving out either key gives ' +
+      'its default, shown there. A protocol\'s own `@framing` wins over `framing`.',
+    value: {
+      kind: 'dictionary',
+      fields: [
+        {
+          key: 'format',
+          summary: 'packed@1 (default), json@1 or msgpack@1',
+          description:
+            'How values are encoded: `"packed@1"` (the default: fixed-width fields, no tags), ' +
+            '`"json@1"` or `"msgpack@1"`. JSON-RPC protocols always speak JSON.',
+          value: { kind: 'string' },
+        },
+        {
+          key: 'framing',
+          summary: 'datagram@2 (default), datagram or jsonrpc',
+          description:
+            'How calls are framed, for every protocol with no `@framing` of its own: ' +
+            '`"datagram@2"` (the default: a connection, where either end can call and several ' +
+            'protocols share one transport), `"datagram"` (lockstep, one protocol per ' +
+            'transport) or `"jsonrpc"`.',
+          value: { kind: 'string' },
+        },
+      ],
+    },
+  },
+  {
     key: 'publish_registries',
     summary: 'Named publish destinations, keyed by name you choose',
     description: 'Named publish destinations for this package, keyed by a name you choose.',
