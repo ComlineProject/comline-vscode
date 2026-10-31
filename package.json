@@ -29,19 +29,11 @@
     "lsp"
   ],
   "activationEvents": [
-    "workspaceContains:**/config.idp"
-  ],
-  "extensionPack": [
-    "tamasfe.even-better-toml"
+    "workspaceContains:**/config.idp",
+    "workspaceContains:**/comline.toml"
   ],
   "main": "./out/extension.js",
   "contributes": {
-    "tomlValidation": [
-      {
-        "fileMatch": "comline.toml",
-        "url": "https://comlineproject.github.io/docs/schemas/comline-toml/0.x.json"
-      }
-    ],
     "commands": [
       {
         "command": "comline.restartServer",
@@ -103,7 +95,7 @@
         {
           "submenu": "comline.fileMenu",
           "group": "navigation",
-          "when": "resourceLangId == comline || resourceLangId == comline-package"
+          "when": "resourceLangId == comline || resourceLangId == comline-package || resourceLangId == comline-toml"
         }
       ],
       "comline.fileMenu": [
@@ -157,6 +149,20 @@
           "light": "./icons/comline-light.png",
           "dark": "./icons/comline-dark.png"
         }
+      },
+      {
+        "id": "comline-toml",
+        "aliases": [
+          "comline.toml"
+        ],
+        "filenames": [
+          "comline.toml"
+        ],
+        "configuration": "./language-configuration.toml.json",
+        "icon": {
+          "light": "./icons/comline-light.png",
+          "dark": "./icons/comline-dark.png"
+        }
       }
     ],
     "grammars": [
@@ -172,6 +178,11 @@
         "language": "comline-package",
         "scopeName": "source.comline-package",
         "path": "./syntaxes/comline-package.tmLanguage.json"
+      },
+      {
+        "language": "comline-toml",
+        "scopeName": "source.comline-toml",
+        "path": "./syntaxes/comline-toml.tmLanguage.json"
       }
     ],
     "icons": {

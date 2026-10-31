@@ -27,13 +27,15 @@ This extension provides rich language support for Comline through integration wi
 - Comment toggling (`Ctrl/Cmd+/`)
 - Bracket matching and auto-closing
 - Code folding for struct/enum/protocol blocks
-- `comline.toml` completion, validation and hover docs, from its JSON Schema
-  (served at `https://comlineproject.github.io/docs/schemas/comline-toml/0.x.json`),
-  through [Even Better TOML](https://marketplace.visualstudio.com/items?itemName=tamasfe.even-better-toml),
-  which installs alongside this extension
+- `comline.toml` highlighting, and diagnostics, completion, hover and quick
+  fixes from the Comline language server, which reads the file against the
+  package next to it: the languages `config.idp` declares, the encodings in
+  view, and the versions its generators handle. Other TOML extensions such as
+  Even Better TOML attach to the `toml` language, so they leave `comline.toml`
+  (its own `comline-toml` language) alone
 
 ### ⚙️ CLI Commands
-A Comline icon in the editor title bar (when a `.ids`/`.idp` file is open)
+A Comline icon in the editor title bar (when a `.ids`/`.idp` file or `comline.toml` is open)
 opens a menu to run the [comline CLI](https://github.com/ComlineProject/cli)
 against the current workspace, with a toast reporting success or failure:
 - **Build** — compile and freeze a new version

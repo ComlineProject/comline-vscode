@@ -58,19 +58,6 @@ jobs:
           git -C pin-check fetch -q --depth 1 https://github.com/ComlineProject/language-server "$rev" \
             || { echo "::error::language-server rev $rev is not on GitHub"; exit 1; }
 
-  # The schema is generated in ComlineProject/generation from the config
-  # types; the copy here must not drift from it.
-  schema-drift:
-    name: Schema drift
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: schemas/comline-toml.json must equal generation's
-        run: bash scripts/sync-schema.sh --check
-
   package-test:
     name: Package Test
     runs-on: ubuntu-latest

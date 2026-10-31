@@ -5,11 +5,11 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ## [Unreleased]
 
 ### Added
-- `comline.toml` completes, validates and shows hover docs for its keys, through
-  Even Better TOML's schema support (a `tomlValidation` contribution). The
-  extension pack now includes `tamasfe.even-better-toml`. A copy of the schema
-  is bundled at `schemas/comline-toml.json`, kept equal to generation's by
-  `scripts/sync-schema.sh`.
+- `comline.toml` is its own language, `comline-toml`, highlighted with a
+  bundled TOML grammar (Taplo's, MIT; see `syntaxes/THIRD-PARTY-NOTICES.md`)
+  and served by the Comline language server: diagnostics for its shape and
+  for the package it's in, completion, hover and quick fixes. Needs a
+  language server with comline.toml support (language-server#90).
 - `f"..."` strings highlight as interpolated, each `{path}` placeholder
   apart; `{{` and `}}` as escapes.
 
@@ -24,6 +24,13 @@ All notable changes to the "comline-vscode" extension will be documented in this
   keyword.
 
 ### Removed
+- The `tomlValidation` contribution, the Even Better TOML extension pack and
+  the bundled `schemas/comline-toml.json` (with `scripts/sync-schema.sh` and
+  its CI job). The language server now owns `comline.toml`, reading the
+  schema from the CLI's own types, so nothing here used the copy. Even Better
+  TOML only attaches to the `toml` language, so it no longer sees the file;
+  other editors still get the schema from the `#:schema` line `comline new`
+  writes.
 - The dashed underline on a declared target, and the target hover. They
   matched `name#version` exactly, but a version is a minimum; the language
   server's diagnostics and hover check a target as `comline build` does.
