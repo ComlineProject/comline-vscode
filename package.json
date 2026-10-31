@@ -31,8 +31,17 @@
   "activationEvents": [
     "workspaceContains:**/config.idp"
   ],
+  "extensionPack": [
+    "tamasfe.even-better-toml"
+  ],
   "main": "./out/extension.js",
   "contributes": {
+    "tomlValidation": [
+      {
+        "fileMatch": "comline.toml",
+        "url": "https://comlineproject.github.io/docs/schemas/comline-toml/0.x.json"
+      }
+    ],
     "commands": [
       {
         "command": "comline.restartServer",
