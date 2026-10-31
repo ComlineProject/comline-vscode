@@ -5,6 +5,11 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ## [Unreleased]
 
 ### Added
+- `comline.toml` completes, validates and shows hover docs for its keys, through
+  Even Better TOML's schema support (a `tomlValidation` contribution). The
+  extension pack now includes `tamasfe.even-better-toml`. A copy of the schema
+  is bundled at `schemas/comline-toml.json`, kept equal to generation's by
+  `scripts/sync-schema.sh`.
 - `f"..."` strings highlight as interpolated, each `{path}` placeholder
   apart; `{{` and `}}` as escapes.
 
