@@ -218,6 +218,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
     documentSelector: [
       { scheme: 'file', language: 'comline' },
       { scheme: 'file', language: 'comline-package' },
+      // `comline.toml`: the server reads it against the package next to it
+      // (diagnostics, completion, hover, quick fixes).
+      { scheme: 'file', language: 'comline-toml' },
       // std's schemas (see the `comline-std` provider below): hover and
       // go-to-definition keep working inside them.
       { scheme: STD_SCHEME, language: 'comline' },
