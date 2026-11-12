@@ -201,8 +201,9 @@ jobs:
       - name: Linux binary must be static
         if: matrix.musl
         run: |
-          readelf -lW out/comline-lsp | grep -E 'Type|INTERP|DYNAMIC' || true
-          if readelf -lW out/comline-lsp | grep -q INTERP; then
+          headers=$(readelf -lW out/comline-lsp)
+          grep -E 'Type|INTERP|DYNAMIC' <<<"$headers" || true
+          if grep -q INTERP <<<"$headers"; then
             echo "::error::comline-lsp is dynamically linked"
             exit 1
           fi
