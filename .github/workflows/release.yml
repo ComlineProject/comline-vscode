@@ -334,7 +334,7 @@ jobs:
 
       - name: Checksums
         working-directory: dist
-        run: sha256sum *.vsix | tee SHA256SUMS
+        run: sha256sum -- *.vsix | tee SHA256SUMS
 
       - name: Create the release (or refresh its assets on a re-run)
         env:
