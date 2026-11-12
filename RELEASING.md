@@ -15,7 +15,7 @@ decides which from the event that started it.
 | **stable** | you push `vX.Y.Z` | `X.Y.Z` (= `package.json`) | release, marked latest | **published** |
 | **pre** | you push `vX.Y.Z-rc.1`, `-beta.2`, … | the tag | prerelease | never |
 | **dev** | every push to `main` | `X.Y.Z-dev.N` (CI tags it) | prerelease | never |
-| **dry** | *Run workflow* by hand | `package.json` | nothing (artifacts only) | never |
+| **dry** | *Run workflow* by hand, or a pull request that changes the build (`package.json`, `yarn.lock`, `scripts/`, the workflow) | `package.json` | nothing (artifacts only) | never |
 
 **Dev builds** are prereleases of the next unreleased version. That is
 `package.json`'s version until it is tagged, then the patch after it:
