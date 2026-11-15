@@ -20,7 +20,10 @@ All notable changes to the "comline-vscode" extension will be documented in this
   (`~/.cargo/bin`).
 - Unit tests for the server and CLI resolution (`yarn test`), run in CI, and a
   workflow that runs the same code inside Flathub's VSCodium sandbox against a
-  real `flatpak-spawn --host` (`scripts/flatpak-e2e.cjs`).
+  real `flatpak-spawn --host` (`scripts/flatpak-e2e.cjs`), with the language
+  server built from the rev `package.json` pins and the CLI from a pinned
+  commit, in the `ci-flatpak` image (Flatpak and VSCodium at an exact Flathub
+  commit, nothing installed while the job runs).
 - `comline.toml` is its own language, `comline-toml`, highlighted with a
   bundled TOML grammar (Taplo's, MIT; see `syntaxes/THIRD-PARTY-NOTICES.md`)
   and served by the Comline language server: diagnostics for its shape and
