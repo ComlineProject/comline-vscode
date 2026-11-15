@@ -11,6 +11,7 @@ import {
   interpretHostProbe,
   launchFor,
   pathDirectories,
+  planLocation,
   planProgram,
   resolveExecutable,
 } from './resolve';
@@ -331,6 +332,7 @@ test('the host probe asks the host\'s shell, with the program as a plain argumen
 test('the host probe: found, missing, or flatpak-spawn itself failing', () => {
   assert.deepEqual(interpretHostProbe({ exitCode: 0, stdout: '/usr/bin/comline-lsp\n', stderr: '' }), {
     ok: true,
+    found: '/usr/bin/comline-lsp',
   });
   assert.deepEqual(interpretHostProbe({ exitCode: 1, stdout: '', stderr: '' }), {
     ok: false,
@@ -382,4 +384,17 @@ test('the host messages say what to install and which setting to change', () => 
   );
   assert.match(failed, /denied/);
   assert.match(failed, /--talk-name=org\.freedesktop\.Flatpak com\.vscodium\.codium/);
+});
+
+test('where a plan runs, for the status bar', () => {
+  assert.equal(
+    planLocation({ kind: 'direct', command: '/ext/bin/linux-x64/comline-lsp' }, 'bundled'),
+    '/ext/bin/linux-x64/comline-lsp (bundled)'
+  );
+  assert.equal(planLocation({ kind: 'direct', command: '/usr/bin/comline-lsp' }, 'path'), '/usr/bin/comline-lsp (PATH)');
+  assert.equal(planLocation({ kind: 'direct', command: '/opt/comline-lsp' }, 'custom'), '/opt/comline-lsp (custom path)');
+  const host = { kind: 'host' as const, spawn: '/usr/bin/flatpak-spawn', program: 'comline-lsp' };
+  assert.equal(planLocation(host, 'path'), 'comline-lsp (on the host)');
+  assert.equal(planLocation({ ...host, found: '/usr/bin/comline-lsp' }, 'path'), '/usr/bin/comline-lsp (on the host)');
+  assert.equal(planLocation({ kind: 'error', message: 'no' }, 'path'), undefined);
 });

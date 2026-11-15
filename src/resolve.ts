@@ -212,8 +212,9 @@ export function effectiveMode(tool: Tool, mode: string, customPath: string): Eff
 export type Plan =
   /** Run this file as it is. */
   | { kind: 'direct'; command: string }
-  /** Run `program` on the host: `spawn` (flatpak-spawn) with `--host`. */
-  | { kind: 'host'; spawn: string; program: string }
+  /** Run `program` on the host: `spawn` (flatpak-spawn) with `--host`.
+   * `found` is where the host check (`verifyPlan`) found it. */
+  | { kind: 'host'; spawn: string; program: string; found?: string }
   | { kind: 'error'; message: string };
 
 export interface PlanInput {
@@ -403,7 +404,8 @@ export function hostProbeArgs(program: string): string[] {
 }
 
 export type HostProbe =
-  | { ok: true }
+  /** `found`: the program's path on the host, as `command -v` printed it. */
+  | { ok: true; found: string }
   | { ok: false; reason: 'missing' }
   | { ok: false; reason: 'failed'; detail: string };
 
@@ -418,7 +420,8 @@ export function interpretHostProbe(result: {
 }): HostProbe {
   const stderr = result.stderr.trim();
   if (result.exitCode === 0) {
-    return result.stdout.trim() !== '' ? { ok: true } : { ok: false, reason: 'missing' };
+    const found = result.stdout.trim().split('\n')[0];
+    return found !== '' ? { ok: true, found } : { ok: false, reason: 'missing' };
   }
   if (typeof result.exitCode === 'number' && stderr === '') {
     return { ok: false, reason: 'missing' };
@@ -475,7 +478,24 @@ export async function verifyPlan(
     });
   }
   if (result.ok) {
-    return plan;
+    return { ...plan, found: result.found };
   }
   return { kind: 'error', message: hostProbeMessage(tool, plan.program, result, env.FLATPAK_ID) };
+}
+
+// -- Saying where it runs -----------------------------------------------
+
+/** Where a plan runs the program, for the status bar's tooltip:
+ * `/path/to/comline-lsp (bundled)`, `... (PATH)`, `... (custom path)`, or
+ * `... (on the host)` for a host plan, with the path the host check found.
+ * Undefined for an error plan. */
+export function planLocation(plan: Plan, mode: Mode): string | undefined {
+  switch (plan.kind) {
+    case 'direct':
+      return `${plan.command} (${mode === 'path' ? 'PATH' : mode === 'custom' ? 'custom path' : mode})`;
+    case 'host':
+      return `${plan.found ?? plan.program} (on the host)`;
+    case 'error':
+      return undefined;
+  }
 }

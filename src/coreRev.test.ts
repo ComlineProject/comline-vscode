@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cliCoreRev, coreRevMismatch, mismatchMessage, serverCoreRev } from './coreRev';
+import { cliCoreRev, cliDisplayVersion, coreRevMismatch, displayVersion, mismatchMessage, serverCoreRev } from './coreRev';
 
 const A = '14ce54658455206d639ddc4fbe6d609d20292587';
 const B = '3b9cc9d0a1f2e4c5b6a798011223344556677889';
@@ -58,4 +58,20 @@ test('the message names both cores, short', () => {
     'Comline: the language server was built with core 14ce546, the CLI with core 3b9cc9d; ' +
       'diagnostics may differ from what `comline generation` reports.'
   );
+});
+
+test('a server version for display, with its core commit short', () => {
+  assert.equal(displayVersion(`0.1.0 (core ${'a'.repeat(40)})`), '0.1.0 (core aaaaaaa)');
+  assert.equal(displayVersion('0.1.0'), '0.1.0');
+  assert.equal(displayVersion('0.1.0 (core unknown)'), '0.1.0 (core unknown)');
+});
+
+test('a CLI version for display: its first line, and its core commit short', () => {
+  const sha = 'b'.repeat(40);
+  assert.equal(
+    cliDisplayVersion(`comline 0.1.0\ncommit-hash: abc\nbuild-date: 2026-11-16\ncore-rev: ${sha}\n`),
+    'comline 0.1.0 (core bbbbbbb)'
+  );
+  assert.equal(cliDisplayVersion('comline 0.1.0\ncommit-hash: abc\n'), 'comline 0.1.0');
+  assert.equal(cliDisplayVersion('\n'), undefined);
 });

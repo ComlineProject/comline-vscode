@@ -5,6 +5,11 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ## [Unreleased]
 
 ### Added
+- The package status bar item's tooltip says which language server and CLI
+  are in use: each one's version with its `comline-core` commit, and its path
+  with how it was found (bundled, PATH, custom path, or on the host). The CLI's
+  comes from the one `comline --version` run the core mismatch warning already
+  makes.
 - A warning when the language server and the CLI were built with different
   `comline-core` commits, since they can then disagree about a file (the
   bundled server rejected grammar `comline generation` accepted). Shown once
