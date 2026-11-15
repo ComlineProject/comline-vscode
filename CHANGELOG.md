@@ -83,6 +83,11 @@ All notable changes to the "comline-vscode" extension will be documented in this
   tooling (`undici`, `qs`, `js-yaml`, `tmp`, `flatted`, `form-data`,
   `picomatch`, and eslint 8's `minimatch` 3 and `brace-expansion` 1), which the
   `.vsix` does not contain.
+- Development tooling moves to Node 22 (22.23.5 in every workflow; Node 20 reached
+  end of life in April 2026) and `@vscode/vsce` 2 to 4, which needs it. The
+  `vsce package` and `ovsx publish` command lines are unchanged, and the packages
+  hold the same files. This also removes the last development-only advisories
+  held by vsce's old `markdown-it`, `linkify-it` and `uuid`.
 
 ### Fixed
 - `comline.server.mode: "path"` never worked: the extension passed the bare
