@@ -275,22 +275,23 @@ jobs:
           # A package to generate code from, made by the CLI itself.
           (cd "$HOME/e2e" && "$HOME/.local/bin/comline" new tinypkg && ls -R tinypkg)
           # What the test reads.
-          APP_REPO="$GITHUB_WORKSPACE" BUNDLED="$RUNNER_TEMP/bundled/comline-lsp" node -e '
-            const home = process.env.HOME;
-            require("fs").writeFileSync(home + "/e2e/config.json", JSON.stringify({
-              repo: process.env.APP_REPO,
-              bundledLsp: process.env.BUNDLED,
-              hostLspUsr: "/usr/local/bin/comline-lsp",
-              hostLspHome: home + "/e2e/hostonly/comline-lsp",
-              package: home + "/e2e/tinypkg",
-              appId: process.env.APP_ID,
-            }, null, 2));'
+          cat > "$HOME/e2e/config.json" <<EOF
+          {
+            "repo": "$GITHUB_WORKSPACE",
+            "bundledLsp": "$RUNNER_TEMP/bundled/comline-lsp",
+            "hostLspUsr": "/usr/local/bin/comline-lsp",
+            "hostLspHome": "$HOME/e2e/hostonly/comline-lsp",
+            "package": "$HOME/e2e/tinypkg",
+            "appId": "$APP_ID"
+          }
+          EOF
           cat "$HOME/e2e/config.json"
 
       - name: Find the app's Electron binary
         id: electron
         run: |
-          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export XDG_RUNTIME_DIR
           flatpak run --command=sh "$APP_ID" -c 'ls -l /app/bin /app/share/codium | head -40'
           flatpak run --command=sh "$APP_ID" -c 'test -x /app/share/codium/codium'
           echo "bin=/app/share/codium/codium" >> "$GITHUB_OUTPUT"
@@ -301,7 +302,8 @@ jobs:
         env:
           ELECTRON: ${{ steps.electron.outputs.bin }}
         run: |
-          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export XDG_RUNTIME_DIR
           # The host session's PATH, which `flatpak-spawn --host` programs get:
           # it is the environment the session bus is started in.
           export PATH="$HOME/.local/bin:$PATH"
