@@ -16,3 +16,4 @@ scripts/**
 test-workspace/**
 bin/README.md
 RELEASING.md
+out/**/*.test.js

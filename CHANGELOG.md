@@ -10,6 +10,15 @@ All notable changes to the "comline-vscode" extension will be documented in this
   identifier.
 - README: running a language server other than the bundled one in Flatpak
   VSCodium and VS Code.
+- `host` mode for `comline.server.mode` and `comline.cli.mode`: runs the
+  language server or the CLI on the host system. Inside a Flatpak that is
+  `flatpak-spawn --host` (stdio and `RUST_LOG` pass through); the extension
+  checks `flatpak-spawn` and the program on the host first, and says what to
+  install or which setting to change. Outside a Flatpak it is the same as
+  `path`. `comline.server.customPath` / `comline.cli.customPath` name the
+  program to run in `host` mode, for one that isn't on the host's `PATH`
+  (`~/.cargo/bin`).
+- Unit tests for the server and CLI resolution (`yarn test`), run in CI.
 - `comline.toml` is its own language, `comline-toml`, highlighted with a
   bundled TOML grammar (Taplo's, MIT; see `syntaxes/THIRD-PARTY-NOTICES.md`)
   and served by the Comline language server: diagnostics for its shape and
@@ -18,7 +27,25 @@ All notable changes to the "comline-vscode" extension will be documented in this
 - `f"..."` strings highlight as interpolated, each `{path}` placeholder
   apart; `{{` and `}}` as escapes.
 
+### Changed
+- Inside a Flatpak, `path` mode runs the program on the host through
+  `flatpak-spawn --host`, since the sandbox's `PATH` is not the host's. The
+  CLI's default mode is `path`, so Build/Check/Generate/Clean find a `comline`
+  installed on the host. The bundled server (the server's default) is
+  unaffected: it runs in the sandbox.
+- Generate runs `comline generation` and Clean runs `comline generation clean`,
+  as cli#153 renamed them; they need a CLI with those commands. The command
+  ids (`comline.generate`, `comline.clean`) and titles are unchanged.
+
 ### Fixed
+- `comline.server.mode: "path"` never worked: the extension passed the bare
+  name `comline-lsp` to a file-existence check, which looks in the current
+  directory, not on `PATH`. The name is now looked up on `PATH` (with
+  `PATHEXT` on Windows), and the error lists the directories searched. The
+  CLI's `path` mode and a bare `customPath` are resolved the same way, and a
+  CLI that isn't found is reported before the task runs.
+- Build, Check, Generate and Clean were not registered when the language server
+  wasn't found; they no longer depend on it.
 - The bundled language server moves from `b980a6e` to `8590a0a`. The old one
   linked a comline-core from before `T[max N]` bounds and `char`, so it
   reported "unexpected token `max`" on `char[max 32]`. The new one also reports
