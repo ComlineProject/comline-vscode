@@ -60,7 +60,10 @@ Every server is built from the **language-server rev pinned in `package.json`**:
 
 So a release always records which server it ships. Moving the server is a
 reviewed change like any other pin, and CI fails a PR whose pinned rev is not
-on GitHub.
+on GitHub. Renovate opens a pull request when language-server's default branch
+moves past the pin (reviewed by hand, never merged on its own), and CI warns
+when the pin is behind that branch or the pinned server's `comline-core` is not
+the CLI's. The server reports its core in `comline-lsp --version`.
 
 > **Caveat:** `language-server` does not commit its `Cargo.lock`. The pin fixes
 > the server's own source, but its transitive crate versions are resolved when

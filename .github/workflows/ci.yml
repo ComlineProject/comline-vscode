@@ -87,6 +87,45 @@ jobs:
           git -C pin-check fetch -q --depth 1 https://github.com/ComlineProject/language-server "$rev" \
             || { echo "::error::language-server rev $rev is not on GitHub"; exit 1; }
 
+      # Advisory: a warning annotation, never a failure. A pin that is behind
+      # is how the bundled server came to reject grammar the CLI accepts
+      # (#32), and Renovate opens the bump; this puts it in front of whoever
+      # is changing the repo meanwhile.
+      - name: The pin should be current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rev=$(node -p "require('./package.json').comline.languageServer.rev")
+          # `comline-core = { git = "...", rev = "<sha>" }` in a Cargo.toml.
+          core_rev() { sed -nE 's/^comline-core[[:space:]]*=.*rev[[:space:]]*=[[:space:]]*"([0-9a-f]{40})".*/\1/p' | head -n 1; }
+
+          # 1. Behind language-server's default branch?
+          branch=$(gh api repos/ComlineProject/language-server --jq .default_branch) || branch=
+          behind=
+          if [ -n "$branch" ]; then
+            behind=$(gh api "repos/ComlineProject/language-server/compare/$rev...$branch" --jq .ahead_by) || behind=
+          fi
+          if [ -z "$behind" ]; then
+            echo "::warning title=Language server pin::Could not compare $rev with language-server's default branch."
+          elif [ "$behind" -gt 0 ]; then
+            echo "::warning title=Language server pin::comline.languageServer.rev ${rev:0:7} is $behind commit(s) behind language-server's $branch. The bundled server may reject what the CLI accepts; bump the pin (Renovate opens the pull request)."
+          else
+            echo "The pin ${rev:0:7} is language-server's $branch."
+          fi
+
+          # 2. The pinned server's comline-core vs the CLI's (its default
+          # branch, which is what `cargo install --git` gives). The server has
+          # no committed Cargo.lock, so both are read from the Cargo.toml.
+          server_core=$(git -C pin-check show FETCH_HEAD:Cargo.toml | core_rev) || server_core=
+          cli_core=$(gh api repos/ComlineProject/cli/contents/Cargo.toml -H 'Accept: application/vnd.github.raw+json' | core_rev) || cli_core=
+          if [ -z "$server_core" ] || [ -z "$cli_core" ]; then
+            echo "::warning title=Language server pin::Could not read comline-core's rev from the pinned language server (${server_core:-none}) or the CLI (${cli_core:-none})."
+          elif [ "$server_core" != "$cli_core" ]; then
+            echo "::warning title=Language server pin::The pinned language server was built with comline-core ${server_core:0:7}, the CLI's default branch uses ${cli_core:0:7}. Diagnostics may differ from what comline generation reports."
+          else
+            echo "The pinned server and the CLI both use comline-core ${server_core:0:7}."
+          fi
+
   package-test:
     name: Package Test
     runs-on: ubuntu-24.04

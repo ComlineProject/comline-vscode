@@ -28,6 +28,7 @@ import {
   CompletionItemKind,
   MarkdownString,
   Hover,
+  ConfigurationTarget,
 } from 'vscode';
 import {
   LanguageClient,
@@ -54,6 +55,7 @@ import {
   systemProbe,
   verifyPlan,
 } from './resolve';
+import { coreRevMismatch, mismatchMessage, serverCoreRev } from './coreRev';
 
 const execFileAsync = promisify(execFile);
 
@@ -305,10 +307,50 @@ export async function activate(context: ExtensionContext): Promise<void> {
   try {
     await client.start();
     console.log('Comline Language Server started successfully');
+    void warnOnCoreMismatch(client.initializeResult?.serverInfo?.version);
   } catch (error) {
     window.showErrorMessage(
       `Failed to start Comline Language Server: ${error}`
     );
+  }
+}
+
+let coreRevChecked = false;
+
+/** Warns, once per session, when the language server and the CLI were built
+ * with different `comline-core` commits (`coreRev.ts`): they can then
+ * disagree about the same file. Says nothing when either doesn't report its
+ * commit, when there is no CLI to ask, or when `comline.warnOnCoreMismatch`
+ * is off. Never throws. */
+async function warnOnCoreMismatch(serverVersion: string | undefined): Promise<void> {
+  if (coreRevChecked) {
+    return;
+  }
+  coreRevChecked = true;
+  try {
+    const config = workspace.getConfiguration('comline');
+    if (!config.get<boolean>('warnOnCoreMismatch', true) || serverCoreRev(serverVersion) === undefined) {
+      return;
+    }
+    const plan = await resolveProgram('cli');
+    if (plan.kind === 'error') {
+      return;
+    }
+    const launch = launchFor(plan, ['--version'], {}, process.env);
+    const { stdout } = await execFileAsync(launch.command, launch.args, {
+      timeout: 5000,
+      env: launch.env,
+    });
+    const mismatch = coreRevMismatch(serverVersion, stdout);
+    if (!mismatch) {
+      return;
+    }
+    const dontShowAgain = "Don't show again";
+    if ((await window.showWarningMessage(mismatchMessage(mismatch), dontShowAgain)) === dontShowAgain) {
+      await config.update('warnOnCoreMismatch', false, ConfigurationTarget.Global);
+    }
+  } catch (err) {
+    console.warn(`Comline: couldn't compare the language server's and the CLI's core ('comline --version' failed): ${err}`);
   }
 }
 

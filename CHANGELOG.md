@@ -5,6 +5,17 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ## [Unreleased]
 
 ### Added
+- A warning when the language server and the CLI were built with different
+  `comline-core` commits, since they can then disagree about a file (the
+  bundled server rejected grammar `comline generation` accepted). Shown once
+  per session, not modal, with "Don't show again" (`comline.warnOnCoreMismatch`).
+  The server reports its commit in `comline-lsp --version` and in the
+  `initialize` result's `serverInfo.version` (language-server#125), the CLI in
+  `comline --version` (cli#165); nothing is said when either doesn't.
+- Renovate opens a pull request when language-server's default branch moves
+  past `comline.languageServer.rev` (never merged on its own), and CI warns
+  when the pin is behind that branch or the pinned server's `comline-core`
+  differs from the CLI's (#32).
 - The `char` type highlights as a primitive, and `max` as a keyword right
   after `[` (`char[max 32]`, `T[max N]`); a field named `max` stays an
   identifier.

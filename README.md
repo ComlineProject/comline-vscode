@@ -194,6 +194,13 @@ server settings when it activates.
 }
 ```
 
+`comline.warnOnCoreMismatch` (default `true`): the language server and the CLI
+each know which `comline-core` they were built with (`comline-lsp --version`,
+`comline --version`). When they differ, the extension warns once per session
+that diagnostics may differ from what `comline generation` reports. Nothing is
+said if either one doesn't report it. "Don't show again" in the warning, or
+this setting set to `false`, turns it off.
+
 ### CLI Binary Location
 
 The Build/Check/Generate/Clean commands look for `comline` on `PATH` by
