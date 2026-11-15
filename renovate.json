@@ -1,4 +1,37 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>ComlineProject/.github:renovate-config"]
+  "extends": ["github>ComlineProject/.github:renovate-config"],
+  "customManagers": [
+    {
+      "description": [
+        "The language server a release bundles: `comline.languageServer.rev` in package.json, tracked against the head of language-server's default branch (no currentValue: the git-refs datasource then looks up HEAD)"
+      ],
+      "customType": "regex",
+      "managerFilePatterns": ["/^package\\.json$/"],
+      "matchStrings": [
+        "\"languageServer\"\\s*:\\s*\\{\\s*\"rev\"\\s*:\\s*\"(?<currentDigest>[0-9a-f]{40})\""
+      ],
+      "datasourceTemplate": "git-refs",
+      "packageNameTemplate": "https://github.com/ComlineProject/language-server",
+      "depNameTemplate": "ComlineProject/language-server"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": [
+        "The bundled language server's bump is its own pull request, reviewed by hand: it changes what every release ships"
+      ],
+      "matchPackageNames": ["ComlineProject/language-server"],
+      "matchUpdateTypes": ["digest"],
+      "commitMessageAction": "Bump",
+      "commitMessageTopic": "the bundled language server",
+      "commitMessageExtra": "to {{{newDigestShort}}}",
+      "semanticCommits": "disabled",
+      "groupName": null,
+      "automerge": false,
+      "prBodyNotes": [
+        "Check that the language server's `comline-core` is the one the CLI uses (`comline-lsp --version` and `comline --version` print it) before merging."
+      ]
+    }
+  ]
 }
