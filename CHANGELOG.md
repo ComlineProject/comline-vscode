@@ -18,7 +18,9 @@ All notable changes to the "comline-vscode" extension will be documented in this
   `path`. `comline.server.customPath` / `comline.cli.customPath` name the
   program to run in `host` mode, for one that isn't on the host's `PATH`
   (`~/.cargo/bin`).
-- Unit tests for the server and CLI resolution (`yarn test`), run in CI.
+- Unit tests for the server and CLI resolution (`yarn test`), run in CI, and a
+  workflow that runs the same code inside Flathub's VSCodium sandbox against a
+  real `flatpak-spawn --host` (`scripts/flatpak-e2e.cjs`).
 - `comline.toml` is its own language, `comline-toml`, highlighted with a
   bundled TOML grammar (Taplo's, MIT; see `syntaxes/THIRD-PARTY-NOTICES.md`)
   and served by the Comline language server: diagnostics for its shape and
