@@ -12,6 +12,8 @@ All notable changes to the "comline-vscode" extension will be documented in this
   The server reports its commit in `comline-lsp --version` and in the
   `initialize` result's `serverInfo.version` (language-server#125), the CLI in
   `comline --version` (cli#165); nothing is said when either doesn't.
+- The bundled language server moves from `8590a0a` to `c56715a`, which only
+  adds that report (language-server#125).
 - Renovate opens a pull request when language-server's default branch moves
   past `comline.languageServer.rev` (never merged on its own), and CI warns
   when the pin is behind that branch or the pinned server's `comline-core`
