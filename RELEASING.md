@@ -74,7 +74,8 @@ The keys `.idp` completion and hover offer are core's, too: `src/idpSchema.gener
 is core's `schemas/config-idp.json` at the core commit
 `comline.idpSchema.rev` pins. To follow core, move the pin and run
 `node scripts/sync-idp-schema.mjs --write`; CI fails when the committed file is
-not what the pin generates.
+not what the pin generates, and warns when core's current schema differs from
+the pinned one.
 
 The `comline` CLI is **not** bundled. Build/Check/Generate/Clean need it on
 `PATH` (see the README's Requirements section).

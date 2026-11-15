@@ -155,6 +155,20 @@ jobs:
       - name: The committed schema must be core's at the pinned rev
         run: node scripts/sync-idp-schema.mjs
 
+      # Advisory, like the language-server pin's: core changing what
+      # `config.idp` takes doesn't fail anything here, so say when the pin is
+      # behind core's default branch. A failed lookup is a warning too.
+      - name: The pin should be current
+        run: |
+          url=https://raw.githubusercontent.com/ComlineProject/core/HEAD/schemas/config-idp.json
+          if ! curl -fsSL --retry 3 "$url" -o "$RUNNER_TEMP/config-idp.json"; then
+            echo "::warning::couldn't fetch core's schemas/config-idp.json to check the pin"
+          elif cmp -s "$RUNNER_TEMP/config-idp.json" src/idpSchema.generated.json; then
+            echo "The pinned schema is core's current one."
+          else
+            echo "::warning file=package.json::core's schemas/config-idp.json has changed since comline.idpSchema.rev: bump the pin and run 'node scripts/sync-idp-schema.mjs --write'"
+          fi
+
   package-test:
     name: Package Test
     runs-on: ubuntu-24.04

@@ -19,7 +19,8 @@ All notable changes to the "comline-vscode" extension will be documented in this
   `schemas/config-idp.json`; `src/idpSchema.generated.json` is that file at the
   core commit `comline.idpSchema.rev` pins, refreshed by
   `node scripts/sync-idp-schema.mjs --write`. CI fails when the committed copy
-  differs from the pin, so the schema can't drift from core again.
+  differs from the pin, so the schema can't drift from core again, and warns
+  when core's schema has moved past the pin.
 - The package status bar item's tooltip says which language server and CLI
   are in use: each one's version with its `comline-core` commit, and its path
   with how it was found (bundled, PATH, custom path, or on the host). The CLI's
