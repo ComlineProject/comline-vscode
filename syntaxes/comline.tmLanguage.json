@@ -52,6 +52,11 @@
           "match": "\\boptional\\b"
         },
         {
+          "comment": "`max` is a keyword only as the first word inside an array's brackets (`T[max N]`, `char[max 32]`); anywhere else it is an ordinary identifier, so a field may be named `max`.",
+          "match": "(?<=\\[)\\s*(max)\\b(?=\\s+[^\\s\\]])",
+          "captures": { "1": { "name": "keyword.other.comline" } }
+        },
+        {
           "name": "variable.language.comline",
           "match": "\\b(self|parent|package)\\b"
         },
@@ -65,7 +70,7 @@
       "patterns": [
         {
           "name": "support.type.primitive.comline",
-          "match": "\\b(s8|s16|s32|s64|u8|u16|u32|u64|f32|f64|bool|string)\\b"
+          "match": "\\b(s8|s16|s32|s64|u8|u16|u32|u64|f32|f64|bool|string|char)\\b"
         },
         {
           "name": "entity.name.type.comline",

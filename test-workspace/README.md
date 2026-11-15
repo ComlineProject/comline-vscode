@@ -9,7 +9,7 @@ the same corpus the playground tests against — real, parser-valid schemas,
 not illustrative pseudocode.
 
 - **chat.ids** + **types.ids** — a small chat protocol split across two
-  files (`chat.ids` has `use types::Message`), good for exercising
+  files (`chat.ids` has `use package::types::Message`), good for exercising
   cross-file hover/go-to-definition specifically.
 - **keyvalue.ids** — a single-file key/value store with docstrings and an
   `error`-typed failure case.
