@@ -29,7 +29,7 @@ const fieldsAt = (path: string[]): IdpFieldSchema[] => {
 /** The path of the cursor at `|` in `source`. */
 const pathAtBar = (source: string): string[] => {
   const offset = source.indexOf('|');
-  const text = source.replace('|', '');
+  const text = source.slice(0, offset) + source.slice(offset + 1);
   return keyPathAt(stripNonCode(text), offset);
 };
 
