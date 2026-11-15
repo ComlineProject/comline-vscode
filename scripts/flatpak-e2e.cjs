@@ -324,8 +324,8 @@ scenario('3. host probe: ok, missing, and flatpak-spawn itself failing', async (
       return r.interpretHostProbe({ exitCode: e.code, stdout: e.stdout ?? '', stderr: e.stderr ?? '' });
     }
   };
-  assert.deepEqual(await run('comline-lsp'), { ok: true });
-  assert.deepEqual(await run(config.hostLspHome), { ok: true });
+  assert.deepEqual(await run('comline-lsp'), { ok: true, found: config.hostLspUsr });
+  assert.deepEqual(await run(config.hostLspHome), { ok: true, found: config.hostLspHome });
   assert.deepEqual(await run('comline-no-such-program'), { ok: false, reason: 'missing' });
   assert.deepEqual(await run('/no/such/dir/comline-lsp'), { ok: false, reason: 'missing' });
   // No session bus to talk to: flatpak-spawn fails, and says why.
@@ -355,7 +355,9 @@ scenario('4. path inside the sandbox is the host', async () => {
     const plan = r.planProgram({ tool, mode: 'path', customPath: '', bundled: null }, probe);
     assert.deepEqual(plan, { kind: 'host', spawn: spawnPath, program });
     const verified = await r.verifyPlan(tool, plan);
-    assert.deepEqual(verified, plan, `${program} is not on the host: ${verified.message}`);
+    assert.equal(verified.kind, 'host', `${program} is not on the host: ${verified.message}`);
+    assert.deepEqual({ ...verified, found: undefined }, { ...plan, found: undefined });
+    assert.ok(path.isAbsolute(verified.found), `found ${verified.found}`);
   }
 });
 

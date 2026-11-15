@@ -49,3 +49,21 @@ export function mismatchMessage({ server, cli }: CoreRevs): string {
     `${short(cli)}; diagnostics may differ from what \`comline generation\` reports.`
   );
 }
+
+/** A server's `serverInfo.version` with its core commit shortened, for
+ * display: `0.1.0 (core 14ce546)`. Anything else is returned as it is. */
+export function displayVersion(version: string): string {
+  return version.replace(new RegExp(`\\(core (${SHA})\\)`), (_, rev: string) => `(core ${short(rev)})`);
+}
+
+/** `comline --version`'s first line with the core commit after it, for
+ * display: `comline 0.1.0 (core 14ce546)`, or just the first line for a CLI
+ * that doesn't report one. Undefined for empty output. */
+export function cliDisplayVersion(output: string): string | undefined {
+  const first = output.split('\n').find((line) => line.trim() !== '')?.trim();
+  if (first === undefined) {
+    return undefined;
+  }
+  const rev = cliCoreRev(output);
+  return rev ? `${first} (core ${short(rev)})` : first;
+}

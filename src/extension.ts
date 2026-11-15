@@ -52,10 +52,11 @@ import {
   effectiveMode,
   planProgram,
   launchFor,
+  planLocation,
   systemProbe,
   verifyPlan,
 } from './resolve';
-import { coreRevMismatch, mismatchMessage, serverCoreRev } from './coreRev';
+import { cliDisplayVersion, coreRevMismatch, displayVersion, mismatchMessage, serverCoreRev } from './coreRev';
 
 const execFileAsync = promisify(execFile);
 
@@ -69,6 +70,16 @@ const SELECTED_PACKAGE_KEY = 'comline.selectedPackageRoot';
 let extensionContext: ExtensionContext;
 let packageStatusBarItem: StatusBarItem;
 let discoveredPackageRoots: string[] = [];
+
+/** What the status bar's tooltip says about the language server: where it
+ * runs (`planLocation`), and its `serverInfo.version` once it has started,
+ * or what went wrong. */
+const serverStatus: { location?: string; version?: string; problem?: string } = {};
+
+/** The same for the CLI, from one `comline --version` run (`loadCliStatus`),
+ * whose output the core mismatch warning reads too. */
+let cliStatus: { location?: string; version?: string; problem?: string } = {};
+let cliVersionPromise: Promise<string | undefined> | undefined;
 
 interface GenerationTarget {
   name: string;
@@ -144,6 +155,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // language server's diagnostics and hover: it resolves through the same
   // registry `comline build` does.
   void ensureTargetsLoaded();
+  cliVersionPromise = loadCliStatus();
 
   context.subscriptions.push(
     languages.registerCompletionItemProvider(
@@ -208,17 +220,24 @@ export async function activate(context: ExtensionContext): Promise<void> {
       if (e.affectsConfiguration('comline.cli.mode') || e.affectsConfiguration('comline.cli.customPath')) {
         targetsPromise = undefined;
         void ensureTargetsLoaded();
+        cliVersionPromise = loadCliStatus();
       }
     })
   );
 
   const plan = await resolveProgram('server', context);
   if (plan.kind === 'error') {
+    serverStatus.problem = 'not found';
+    updatePackageStatusBarItem();
     window.showErrorMessage(plan.message);
     return;
   }
 
   const config = workspace.getConfiguration('comline');
+  serverStatus.location = planLocation(
+    plan,
+    effectiveMode('server', config.get<string>('server.mode', TOOLS.server.defaultMode), config.get<string>('server.customPath', '').trim()).mode
+  );
   const debug = config.get<boolean>('server.debug', false);
 
   // `comline-lsp` builds its tracing subscriber from `RUST_LOG` (see
@@ -300,6 +319,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
       }
       await client.stop();
       await client.start();
+      serverStatus.version = client.initializeResult?.serverInfo?.version;
+      updatePackageStatusBarItem();
       window.showInformationMessage('Comline Language Server restarted.');
     }),
   );
@@ -307,8 +328,14 @@ export async function activate(context: ExtensionContext): Promise<void> {
   try {
     await client.start();
     console.log('Comline Language Server started successfully');
-    void warnOnCoreMismatch(client.initializeResult?.serverInfo?.version);
+    serverStatus.version = client.initializeResult?.serverInfo?.version;
+    serverStatus.problem = undefined;
+    updatePackageStatusBarItem();
+    const serverVersion = client.initializeResult?.serverInfo?.version;
+    void cliVersionPromise?.then((cliVersion) => warnOnCoreMismatch(serverVersion, cliVersion));
   } catch (error) {
+    serverStatus.problem = 'failed to start';
+    updatePackageStatusBarItem();
     window.showErrorMessage(
       `Failed to start Comline Language Server: ${error}`
     );
@@ -322,7 +349,10 @@ let coreRevChecked = false;
  * disagree about the same file. Says nothing when either doesn't report its
  * commit, when there is no CLI to ask, or when `comline.warnOnCoreMismatch`
  * is off. Never throws. */
-async function warnOnCoreMismatch(serverVersion: string | undefined): Promise<void> {
+async function warnOnCoreMismatch(
+  serverVersion: string | undefined,
+  cliVersionOutput: string | undefined
+): Promise<void> {
   if (coreRevChecked) {
     return;
   }
@@ -332,16 +362,7 @@ async function warnOnCoreMismatch(serverVersion: string | undefined): Promise<vo
     if (!config.get<boolean>('warnOnCoreMismatch', true) || serverCoreRev(serverVersion) === undefined) {
       return;
     }
-    const plan = await resolveProgram('cli');
-    if (plan.kind === 'error') {
-      return;
-    }
-    const launch = launchFor(plan, ['--version'], {}, process.env);
-    const { stdout } = await execFileAsync(launch.command, launch.args, {
-      timeout: 5000,
-      env: launch.env,
-    });
-    const mismatch = coreRevMismatch(serverVersion, stdout);
+    const mismatch = coreRevMismatch(serverVersion, cliVersionOutput);
     if (!mismatch) {
       return;
     }
@@ -350,7 +371,41 @@ async function warnOnCoreMismatch(serverVersion: string | undefined): Promise<vo
       await config.update('warnOnCoreMismatch', false, ConfigurationTarget.Global);
     }
   } catch (err) {
-    console.warn(`Comline: couldn't compare the language server's and the CLI's core ('comline --version' failed): ${err}`);
+    console.warn(`Comline: couldn't warn about the language server's and the CLI's core: ${err}`);
+  }
+}
+
+/** Finds the CLI and runs `comline --version` once, for the status bar's
+ * tooltip; resolves to its output, or undefined when there is no CLI or it
+ * failed. Never throws. */
+async function loadCliStatus(): Promise<string | undefined> {
+  const config = workspace.getConfiguration('comline');
+  const mode = effectiveMode(
+    'cli',
+    config.get<string>('cli.mode', TOOLS.cli.defaultMode),
+    config.get<string>('cli.customPath', '').trim()
+  ).mode;
+  const plan = await resolveProgram('cli');
+  if (plan.kind === 'error') {
+    cliStatus = { problem: 'not found' };
+    updatePackageStatusBarItem();
+    return undefined;
+  }
+  cliStatus = { location: planLocation(plan, mode) };
+  try {
+    const launch = launchFor(plan, ['--version'], {}, process.env);
+    const { stdout } = await execFileAsync(launch.command, launch.args, {
+      timeout: 5000,
+      env: launch.env,
+    });
+    cliStatus.version = cliDisplayVersion(stdout);
+    return stdout;
+  } catch (err) {
+    cliStatus.problem = "'comline --version' failed";
+    console.warn(`Comline: 'comline --version' failed: ${err}`);
+    return undefined;
+  } finally {
+    updatePackageStatusBarItem();
   }
 }
 
@@ -442,8 +497,22 @@ function updatePackageStatusBarItem(): void {
     rootContainingActiveFile(discoveredPackageRoots) ??
     discoveredPackageRoots[0];
   packageStatusBarItem.text = `$(comline-mark) $(package) ${packageLabel(current)}`;
-  packageStatusBarItem.tooltip = `Currently active/selected package:\n${current}\n\nClick to open menu`;
+  packageStatusBarItem.tooltip =
+    `Currently active/selected package:\n${current}\n\n` +
+    `Language server: ${serverStatusLine()}\n` +
+    (serverStatus.location ? `${serverStatus.location}\n` : '') +
+    `\nCLI: ${cliStatus.version ?? cliStatus.problem ?? 'checking'}\n` +
+    (cliStatus.location ? `${cliStatus.location}\n` : '') +
+    `\nClick to open menu`;
   packageStatusBarItem.show();
+}
+
+/** `comline-lsp 0.1.0 (core 14ce546)`, or why there is none. */
+function serverStatusLine(): string {
+  if (serverStatus.version) {
+    return `comline-lsp ${displayVersion(serverStatus.version)}`;
+  }
+  return serverStatus.problem ?? (serverStatus.location ? 'starting' : 'not started');
 }
 
 function toPackageQuickPickItem(root: string): PackageQuickPickItem {
