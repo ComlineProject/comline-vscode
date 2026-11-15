@@ -230,9 +230,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     container:
-      # TODO(digest): the digest of the published ci-flatpak, from the
-      # ci-images `build` run on main (ComlineProject/ci-images#8).
-      image: ghcr.io/comlineproject/ci-flatpak@sha256:TODO
+      image: ghcr.io/comlineproject/ci-flatpak@sha256:664637fe0967ad5e01f47e9356fdd941bd2fd03b3e4ab268fcc37aef3916e0a7
       options: --privileged
     steps:
       - name: Checkout code
