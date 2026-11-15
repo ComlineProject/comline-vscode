@@ -43,6 +43,8 @@ import {
   resolveSchemaAtPath,
   resolveFieldByPathAndWord,
   idpValueKindLabel,
+  dictionaryFieldsOf,
+  mapEntryOf,
   IdpFieldSchema,
 } from './idpSchema';
 import {
@@ -787,7 +789,7 @@ class LanguagesCompletionProvider {
       const item = new CompletionItem(field.key, CompletionItemKind.Field);
       item.insertText = field.key;
       item.range = range;
-      item.detail = idpValueKindLabel(field.value);
+      item.detail = `${idpValueKindLabel(field.value)}${field.required ? ' (required)' : ''}`;
       item.documentation = new MarkdownString(field.description);
       return item;
     });
@@ -800,7 +802,7 @@ class LanguagesCompletionProvider {
 function renderFieldsBlock(fields: IdpFieldSchema[]): string {
   const lines = fields.map((f) => ({
     keyType: `${f.key}: ${idpValueKindLabel(f.value)}`,
-    summary: f.summary,
+    summary: f.required ? `required. ${f.summary}` : f.summary,
   }));
   const width = Math.max(...lines.map((l) => l.keyType.length));
   return lines.map((l) => `${l.keyType.padEnd(width)}  // ${l.summary}`).join('\n');
@@ -818,13 +820,16 @@ function renderFieldHover(field: IdpFieldSchema): MarkdownString {
   md.appendMarkdown('---\n\n');
   md.appendMarkdown(`${field.description}\n`);
 
-  if (field.value.kind === 'dictionary' && field.value.fields.length > 0) {
+  const fields = dictionaryFieldsOf(field.value);
+  const entry = mapEntryOf(field.value);
+  const entryFields = entry ? dictionaryFieldsOf(entry.value) : undefined;
+  if (fields && fields.length > 0) {
     md.appendMarkdown('\n---\n\n#### Fields\n\n');
-    md.appendCodeblock(renderFieldsBlock(field.value.fields), 'comline-package');
-  } else if (field.value.kind === 'map' && field.value.entry.value.kind === 'dictionary') {
-    md.appendMarkdown(`\n---\n\n#### Each entry (${field.value.entry.key})\n\n`);
-    md.appendMarkdown(`${field.value.entry.description}\n\n`);
-    md.appendCodeblock(renderFieldsBlock(field.value.entry.value.fields), 'comline-package');
+    md.appendCodeblock(renderFieldsBlock(fields), 'comline-package');
+  } else if (entry && entryFields && entryFields.length > 0) {
+    md.appendMarkdown(`\n---\n\n#### Each entry (${entry.key})\n\n`);
+    md.appendMarkdown(`${entry.description}\n\n`);
+    md.appendCodeblock(renderFieldsBlock(entryFields), 'comline-package');
   }
 
   return md;

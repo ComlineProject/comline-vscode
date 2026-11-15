@@ -5,6 +5,21 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ## [Unreleased]
 
 ### Added
+- `.idp` completion and hover know every key core reads (#31). Missing before:
+  `id`, `handshake` (the name, and the dictionary form with `comline@2`'s
+  `scope`, `newer_consumer`, `same_version_differs` and `exchange`, each with its
+  values and its default first), `settings`, `unverified`, `encodings` (with
+  `kind`, `profile` and the per-language `map`) and a dependency's
+  `accept_unverified`. `wire` lists the formats and framings core declares and
+  names `datagram@3` as the default framing, and `specification_version` is
+  described as the edition. Completion marks a key a dictionary needs as
+  required. Dependency `group` follows core#284.
+- The `.idp` schema is generated, not written: core keeps a table of every key its
+  reader takes (held to the reader by core's tests) and commits it as
+  `schemas/config-idp.json`; `src/idpSchema.generated.json` is that file at the
+  core commit `comline.idpSchema.rev` pins, refreshed by
+  `node scripts/sync-idp-schema.mjs --write`. CI fails when the committed copy
+  differs from the pin, so the schema can't drift from core again.
 - The package status bar item's tooltip says which language server and CLI
   are in use: each one's version with its `comline-core` commit, and its path
   with how it was found (bundled, PATH, custom path, or on the host). The CLI's

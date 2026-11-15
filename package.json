@@ -16,6 +16,9 @@
   "comline": {
     "languageServer": {
       "rev": "c56715ab44de036544150151a7eaf440d531c323"
+    },
+    "idpSchema": {
+      "rev": "c92c24ec141363a16b9627a944d9c6e9c86e856a"
     }
   },
   "categories": [
@@ -268,7 +271,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "yarn compile",
-    "test": "node --test out/resolve.test.js out/coreRev.test.js",
+    "test": "node --test out/resolve.test.js out/coreRev.test.js out/idpSchema.test.js",
     "lint": "eslint src --ext ts",
     "package": "bash scripts/package.sh",
     "link-binary": "bash scripts/link-binary.sh",

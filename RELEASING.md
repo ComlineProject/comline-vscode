@@ -70,6 +70,12 @@ the CLI's. The server reports its core in `comline-lsp --version`.
 > the release builds. Committing that lockfile would make releases fully
 > reproducible.
 
+The keys `.idp` completion and hover offer are core's, too: `src/idpSchema.generated.json`
+is core's `schemas/config-idp.json` at the core commit
+`comline.idpSchema.rev` pins. To follow core, move the pin and run
+`node scripts/sync-idp-schema.mjs --write`; CI fails when the committed file is
+not what the pin generates.
+
 The `comline` CLI is **not** bundled. Build/Check/Generate/Clean need it on
 `PATH` (see the README's Requirements section).
 
@@ -81,7 +87,8 @@ The `comline` CLI is **not** bundled. Build/Check/Generate/Clean need it on
      and start a fresh empty `## [Unreleased]` above it. That section becomes
      the release notes word for word.
    - optionally move `comline.languageServer.rev` to a newer `language-server`
-     commit
+     commit, and `comline.idpSchema.rev` to a newer core commit (then
+     `node scripts/sync-idp-schema.mjs --write`)
 
    Merge it.
 

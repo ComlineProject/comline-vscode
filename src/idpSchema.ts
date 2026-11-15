@@ -1,36 +1,49 @@
-// A hand-authored schema for `.idp` ("congregation" package config) plus the
-// text-heuristic engine that resolves "what key-path is the cursor inside"
-// against it. No `.idp` parser exists client-side (or in the language server
-// at all — confirmed, see extension.ts), so this works off plain text
-// scanning, in the same spirit as the language server's
-// `completion.rs::determine_context` for `.ids`. That function only strips
-// `//` line comments, which is correct only for `.ids` — `.idp` has `/* */`
-// block comments too (confirmed in
+// The schema of `.idp` ("congregation" package config) plus the text-heuristic
+// engine that resolves "what key-path is the cursor inside" against it. No
+// `.idp` parser exists client-side (or in the language server at all —
+// confirmed, see extension.ts), so this works off plain text scanning, in the
+// same spirit as the language server's `completion.rs::determine_context` for
+// `.ids`. That function only strips `//` line comments, which is correct only
+// for `.ids` — `.idp` has `/* */` block comments too (confirmed in
 // `core/core/src/package/config/idl/grammar.rs`), so this independently
 // strips both, plus string contents, before any brace-depth counting or key
 // search runs.
 //
-// The schema itself is authoritative against
-// `core/core/src/package/config/ir/interpreter/freezing.rs` and
-// `core/core/src/package/config/dependency.rs` — there is no serde/typed
-// schema on the Rust side to introspect (it's a hand-written, string-key-
-// switching interpreter that `panic!`s on anything it doesn't recognize), so
-// this is a manual mirror, kept in sync by hand. `code_generation.languages`
-// is the one dynamic exception: its keys are open `name#version` tokens
-// validated only at `comline generate` time against the compiled-in
-// generator registry — see `comline.cli.*` / `ensureTargetsLoaded` in
-// extension.ts for how that list is fetched live instead of guessed here.
+// The schema itself is not written here. Core's reader is a hand-written,
+// string-key-switching interpreter, so core keeps a table of the keys it reads
+// (`comline_core::package::config::keys`, held to the reader by its tests) and
+// commits it as `schemas/config-idp.json`. `idpSchema.generated.json` is that
+// file at the core commit `comline.idpSchema.rev` in package.json pins, and
+// `scripts/sync-idp-schema.mjs` keeps it so (CI fails when it differs):
+// a key core reads shows up here by bumping the pin, not by editing this file.
+// Only `code_generation.languages` is overridden below: its keys are open
+// `name#version` tokens validated at `comline generation` time against the
+// generators the CLI has, so the extension offers the CLI's live list (see
+// `comline.cli.*` / `ensureTargetsLoaded` in extension.ts) instead of
+// guessing.
 
+import generated from './idpSchema.generated.json';
+
+/** The shape of a value, as core's table writes it
+ * (`comline_core::package::config::keys::ConfigShape`). */
 export type IdpValueKind =
-  | { kind: 'integer' }
+  | { kind: 'integer'; values?: number[] }
   | { kind: 'string' }
+  // A string from a closed set; `default` is what applies where it's left out,
+  // `namespaced` whether a name declared under `encodings` is allowed too.
+  | { kind: 'choice'; values: string[]; default?: string; namespaced?: boolean }
+  | { kind: 'list'; item: IdpValueKind }
   | { kind: 'dictionary'; fields: IdpFieldSchema[] }
-  // `code_generation.languages` specifically — dynamic `name#version` keys,
-  // validated live against the configured `comline` CLI, not this schema.
-  | { kind: 'registry' }
   // A dictionary whose keys are user-chosen names (a dependency name, a
   // publish-registry name) — `entry` describes the shape of each value.
-  | { kind: 'map'; entry: IdpFieldSchema };
+  | { kind: 'map'; entry: IdpFieldSchema }
+  // Any one of these (`handshake`: a name, or a dictionary).
+  | { kind: 'oneOf'; alternatives: IdpValueKind[] }
+  // The settings registry's keys, which the language server serves.
+  | { kind: 'settings' }
+  // `code_generation.languages` specifically — dynamic `name#version` keys,
+  // validated live against the configured `comline` CLI, not this schema.
+  | { kind: 'registry' };
 
 export interface IdpFieldSchema {
   key: string;
@@ -41,172 +54,102 @@ export interface IdpFieldSchema {
   summary: string;
   /** The full explanation, shown when this field is hovered directly. */
   description: string;
+  /** Whether the dictionary it is in is wrong without it. */
+  required?: boolean;
   value: IdpValueKind;
 }
 
-const DEPENDENCY_ENTRY_FIELDS: IdpFieldSchema[] = [
-  {
-    key: 'path',
-    summary: 'Local path — makes this a Path dependency',
-    description:
-      'Local filesystem path to a sibling package — makes this a Path dependency (no declared ' +
-      "version; its version is read from the sibling's own last build).",
-    value: { kind: 'string' },
-  },
-  {
-    key: 'version',
-    summary: 'Declared version (Git/Registry dependencies)',
-    description: 'Declared version. Required for Git and Registry dependencies (omit for Path dependencies).',
-    value: { kind: 'string' },
-  },
-  {
-    key: 'uri',
-    summary: 'Source URI (Git/Registry dependencies)',
-    description: 'Source URI. Required for Git and Registry dependencies.',
-    value: { kind: 'string' },
-  },
-  {
-    key: 'commit',
-    summary: 'Pinned commit — makes this a Git dependency',
-    description:
-      'Pinned commit hash — presence of this key makes this a Git dependency (needs `version` ' +
-      'and `uri` too).',
-    value: { kind: 'string' },
-  },
-  {
-    key: 'hash',
-    summary: 'Optional integrity hash',
-    description: 'Optional integrity hash (e.g. `blake3:...`). Valid on any dependency kind.',
-    value: { kind: 'string' },
-  },
-  {
-    key: 'signature',
-    summary: 'Optional signature (Registry dependencies only)',
-    description: 'Optional signature. Registry dependencies only.',
-    value: { kind: 'string' },
-  },
-];
+/** The file's own version, which core bumps when it changes the shape. */
+const SUPPORTED_SCHEMA_VERSION = 1;
 
-const PUBLISH_REGISTRY_ENTRY_FIELDS: IdpFieldSchema[] = [
-  {
-    key: 'uri',
-    summary: 'The registry URI',
-    description: 'The registry URI.',
-    value: { kind: 'string' },
-  },
-];
+const REGISTRY_NOTE =
+  'Completion offers the targets the *currently configured* `comline` CLI can generate.';
 
-export const IDP_ROOT_FIELDS: IdpFieldSchema[] = [
-  {
-    key: 'specification_version',
-    summary: 'The .idp schema format version',
-    description: 'The `.idp` schema format version this file is written against.',
-    value: { kind: 'integer' },
-  },
-  {
-    key: 'code_generation',
-    summary: 'What this package can be compiled to',
-    description:
-      'Declares what this package can be compiled to. Its only key is `languages`. ' +
-      "Per-target output (directory, layout, package versions) lives in `comline.toml`'s " +
-      '`[generate]` table, not here.',
-    value: {
-      kind: 'dictionary',
-      fields: [
-        {
-          key: 'languages',
-          summary: 'Targets this package can generate, CLI-validated',
-          description:
-            'The `language#version` targets this package declares it can generate. ' +
-            "Each entry's value must be an empty dict (`lang#ver = {}` — it takes no options). " +
-            'Completion offers targets the *currently configured* `comline` CLI can generate.',
-          value: { kind: 'registry' },
-        },
-      ],
-    },
-  },
-  {
-    key: 'wire',
-    summary: 'The wire format and framing both ends speak',
-    description:
-      "The package's wire defaults, which both ends of a connection must agree on: " +
-      '`wire = { format = "packed@1" framing = "datagram@2" }`. Leaving out either key gives ' +
-      'its default, shown there. A protocol\'s own `@framing` wins over `framing`.',
-    value: {
-      kind: 'dictionary',
-      fields: [
-        {
-          key: 'format',
-          summary: 'packed@1 (default), json@1 or msgpack@1',
-          description:
-            'How values are encoded: `"packed@1"` (the default: fixed-width fields, no tags), ' +
-            '`"json@1"` or `"msgpack@1"`. JSON-RPC protocols always speak JSON.',
-          value: { kind: 'string' },
-        },
-        {
-          key: 'framing',
-          summary: 'datagram@2 (default), datagram or jsonrpc',
-          description:
-            'How calls are framed, for every protocol with no `@framing` of its own: ' +
-            '`"datagram@2"` (the default: a connection, where either end can call and several ' +
-            'protocols share one transport), `"datagram"` (lockstep, one protocol per ' +
-            'transport) or `"jsonrpc"`.',
-          value: { kind: 'string' },
-        },
-      ],
-    },
-  },
-  {
-    key: 'publish_registries',
-    summary: 'Named publish destinations, keyed by name you choose',
-    description: 'Named publish destinations for this package, keyed by a name you choose.',
-    value: {
-      kind: 'map',
-      entry: {
-        key: '<registry name>',
-        summary: 'A publish registry reference',
-        description:
-          'A string, identifier, or namespaced reference to a registry, or a dictionary ' +
-          'with a `uri`.',
-        value: { kind: 'dictionary', fields: PUBLISH_REGISTRY_ENTRY_FIELDS },
-      },
-    },
-  },
-  {
-    key: 'dependencies',
-    summary: "This package's dependencies, keyed by name you choose",
-    description: "This package's dependencies, keyed by a name you choose.",
-    value: {
-      kind: 'map',
-      entry: {
-        key: '<dependency name>',
-        summary: 'A Path, Git, or Registry dependency',
-        description:
-          'A Path dependency (`path`), a Git dependency (`version` + `uri` + `commit`), or a ' +
-          'Registry dependency (`version` + `uri`) — which fields are present determines the kind.',
-        value: { kind: 'dictionary', fields: DEPENDENCY_ENTRY_FIELDS },
-      },
-    },
-  },
-];
+/** `code_generation.languages` as the extension serves it: core's field, its
+ * entries replaced by the CLI's live list. */
+function withRegistry(fields: IdpFieldSchema[]): IdpFieldSchema[] {
+  return fields.map((field) => {
+    if (field.key !== 'code_generation' || field.value.kind !== 'dictionary') {
+      return field;
+    }
+    const languages = field.value.fields.map((f) =>
+      f.key === 'languages'
+        ? { ...f, description: `${f.description} ${REGISTRY_NOTE}`, value: { kind: 'registry' } as IdpValueKind }
+        : f
+    );
+    return { ...field, value: { kind: 'dictionary', fields: languages } as IdpValueKind };
+  });
+}
+
+/** The root keys of `config.idp`, from core's table. */
+export function loadIdpSchema(file: { version: number; keys: unknown }): IdpFieldSchema[] {
+  if (file.version !== SUPPORTED_SCHEMA_VERSION) {
+    throw new Error(
+      `idpSchema.generated.json is version ${file.version}, this extension reads ${SUPPORTED_SCHEMA_VERSION}`
+    );
+  }
+  return withRegistry(file.keys as IdpFieldSchema[]);
+}
+
+export const IDP_ROOT_FIELDS: IdpFieldSchema[] = loadIdpSchema(generated);
 
 export function idpValueKindLabel(value: IdpValueKind): string {
   switch (value.kind) {
     case 'integer':
-      return 'integer';
+      return value.values && value.values.length > 0 ? value.values.join(' | ') : 'integer';
     case 'string':
       return 'string';
+    case 'choice':
+      return value.values.map((v) => `"${v}"`).join(' | ');
+    case 'list':
+      return `[${idpValueKindLabel(value.item)}]`;
     case 'dictionary':
       return 'dictionary';
     case 'registry':
       return 'languages registry';
     case 'map':
       return 'dictionary (named entries)';
+    case 'oneOf':
+      return value.alternatives.map(idpValueKindLabel).join(' | ');
+    case 'settings':
+      return 'dictionary (settings)';
     default: {
       const exhaustive: never = value;
       return exhaustive;
     }
   }
+}
+
+/** The fields of the dictionary a value is, or one of its alternatives is. */
+export function dictionaryFieldsOf(value: IdpValueKind): IdpFieldSchema[] | undefined {
+  if (value.kind === 'dictionary') {
+    return value.fields;
+  }
+  if (value.kind === 'oneOf') {
+    for (const alternative of value.alternatives) {
+      const fields = dictionaryFieldsOf(alternative);
+      if (fields) {
+        return fields;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** The entry of the map a value is, or one of its alternatives is. */
+export function mapEntryOf(value: IdpValueKind): IdpFieldSchema | undefined {
+  if (value.kind === 'map') {
+    return value.entry;
+  }
+  if (value.kind === 'oneOf') {
+    for (const alternative of value.alternatives) {
+      const entry = mapEntryOf(alternative);
+      if (entry) {
+        return entry;
+      }
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -382,16 +325,25 @@ export type SchemaAtPath = { fields: IdpFieldSchema[] } | { isRegistry: true } |
 
 /** Walks the schema along `path` (a `keyPathAt` result) — a path segment at
  * a `map` node is treated as a user-chosen key (looked up by shape, not by
- * name), since dependency/registry names are never fixed. */
+ * name), since dependency/registry names are never fixed. A value that is one
+ * of several (`handshake`: a name or a dictionary) is walked by its
+ * dictionary. */
 export function resolveSchemaAtPath(path: string[]): SchemaAtPath {
   let fields: IdpFieldSchema[] | undefined = IDP_ROOT_FIELDS;
   let pendingMapEntry: IdpFieldSchema | undefined;
 
   for (const key of path) {
     if (pendingMapEntry) {
-      const value = pendingMapEntry.value;
+      const value: IdpValueKind = pendingMapEntry.value;
       pendingMapEntry = undefined;
-      fields = value.kind === 'dictionary' ? value.fields : [];
+      const entry = mapEntryOf(value);
+      if (entry) {
+        // A map of maps: this segment names an entry, the next is inside it.
+        pendingMapEntry = entry;
+        fields = undefined;
+      } else {
+        fields = dictionaryFieldsOf(value) ?? [];
+      }
       continue;
     }
 
@@ -403,18 +355,15 @@ export function resolveSchemaAtPath(path: string[]): SchemaAtPath {
       return undefined;
     }
 
-    switch (field.value.kind) {
-      case 'dictionary':
-        fields = field.value.fields;
-        break;
-      case 'registry':
-        return { isRegistry: true };
-      case 'map':
-        pendingMapEntry = field;
-        fields = undefined;
-        break;
-      default:
-        fields = [];
+    if (field.value.kind === 'registry') {
+      return { isRegistry: true };
+    }
+    const entry = mapEntryOf(field.value);
+    if (entry) {
+      pendingMapEntry = entry;
+      fields = undefined;
+    } else {
+      fields = dictionaryFieldsOf(field.value) ?? [];
     }
   }
 
