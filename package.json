@@ -272,18 +272,19 @@
     "watch": "tsc -watch -p ./",
     "pretest": "yarn compile",
     "test": "node --test out/resolve.test.js out/coreRev.test.js out/idpSchema.test.js",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src",
     "package": "bash scripts/package.sh",
     "link-binary": "bash scripts/link-binary.sh",
     "build:icon-font": "npx --yes fantasticon@^4.1.0"
   },
   "devDependencies": {
+    "@stylistic/eslint-plugin": "^6.0.0",
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.75.0",
-    "@typescript-eslint/eslint-plugin": "^6.0.0",
-    "@typescript-eslint/parser": "^6.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.72.2",
+    "@typescript-eslint/parser": "^8.72.2",
     "@vscode/vsce": "^4.1.1",
-    "eslint": "^8.0.0",
+    "eslint": "^10.15.0",
     "typescript": "^5.0.0"
   },
   "dependencies": {

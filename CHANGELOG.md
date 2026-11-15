@@ -91,6 +91,11 @@ All notable changes to the "comline-vscode" extension will be documented in this
   `CHANGELOG.md`), and writes the `Comline Package` language alias as the
   Marketplace tag `ComlinePackage`. It also takes the development-only advisories
   held by vsce's old `markdown-it`, `linkify-it` and `uuid` with it.
+- Linting moves to ESLint 10 with typescript-eslint 8. The configuration is now
+  the flat `eslint.config.mjs` (`.eslintrc.json` is gone) with the same rules as
+  before: `@typescript-eslint/naming-convention`, `curly`, `eqeqeq` and
+  `no-throw-literal`, all warnings. `@typescript-eslint/semi`, removed in
+  typescript-eslint 8, is `@stylistic/semi`. `yarn lint` is `eslint src`.
 
 ### Fixed
 - `comline.server.mode: "path"` never worked: the extension passed the bare
