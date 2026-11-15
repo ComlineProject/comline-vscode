@@ -118,6 +118,61 @@ Specify a custom path to the language server binary:
 }
 ```
 
+### Flatpak (VSCodium, VS Code)
+
+The bundled server needs none of this. Read on only to run a different
+`comline-lsp` (a newer build, say) in the Flatpak builds of VSCodium
+(`com.vscodium.codium`) or VS Code (`com.visualstudio.code`). The editor runs
+inside a sandbox, and `path` mode does not find the server there: Flatpak always
+unsets or overrides `PATH` for the app
+([`flatpak run`](https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-run)),
+so it is the sandbox's, not your shell's. Use `custom` mode with the binary at a
+path the sandbox can read:
+
+1. **Build a binary that runs in the sandbox.** The sandbox has its own runtime,
+   not your distro's libraries, so a dynamically linked build may not start. The
+   bundled Linux servers are static musl builds for that reason; build yours the
+   same way (`rustup target add x86_64-unknown-linux-musl`, a musl C compiler,
+   then `cargo build --release --target x86_64-unknown-linux-musl` in a
+   `language-server` checkout; `aarch64-unknown-linux-musl` on arm64). It must
+   be for your CPU: the host's, not the editor's.
+2. **Put it where the sandbox can read it**, one of:
+   - **Anywhere under your home directory, if the app already has host or home
+     access.** Both Flathub manifests ask for `--filesystem=host`
+     ([VSCodium](https://github.com/flathub/com.vscodium.codium/blob/master/com.vscodium.codium.yaml),
+     [VS Code](https://github.com/flathub/com.visualstudio.code/blob/master/com.visualstudio.code.yaml)),
+     so a stock install can read `~/.cargo/bin`, for instance. `flatpak info
+     --show-permissions <app-id>` lists what yours has, overrides included.
+   - **Grant read access to the directory** if you or Flatseal removed it
+     (`--nofilesystem=host`), or if it lives somewhere `host` leaves out:
+     ```bash
+     flatpak override --user --filesystem=/path/to/dir:ro com.vscodium.codium
+     flatpak override --user --filesystem=/path/to/dir:ro com.visualstudio.code
+     ```
+     Use the line for your editor. `:ro` makes the directory read-only. Paths
+     under `/usr`, `/etc`, `/bin` and the like are reserved, and a `--filesystem`
+     for them has no effect
+     ([reserved paths](https://docs.flatpak.org/en/latest/sandbox-permissions.html#reserved-paths)).
+   - **Copy it into the app's own data directory**, which the app can always
+     read: `mkdir -p ~/.var/app/<app-id>/data/comline && cp comline-lsp
+     ~/.var/app/<app-id>/data/comline/`. That is `$XDG_DATA_HOME` inside the
+     sandbox.
+3. **Point the extension at it** with an absolute path (the setting is used as
+   written, so `~` is not expanded):
+   ```json
+   {
+     "comline.server.mode": "custom",
+     "comline.server.customPath": "/home/you/.var/app/com.vscodium.codium/data/comline/comline-lsp"
+   }
+   ```
+4. **Restart.** An override applies when the app starts, so quit the editor
+   completely and reopen it. The extension reads the server settings when it
+   activates, so after changing them run `Developer: Reload Window`;
+   `Comline: Restart Language Server` starts the same binary again.
+
+If the server isn't found, check the path from inside the sandbox:
+`flatpak run --command=ls com.vscodium.codium -l /path/to/comline-lsp`.
+
 ### Additional Settings
 
 ```json
@@ -183,6 +238,7 @@ protocol UserService {
 - **Default mode**: Ensure the bundled binary is included with the extension
 - **PATH mode**: Run `which comline-lsp` (Linux/Mac) or `where comline-lsp` (Windows) to verify installation
 - **Custom mode**: Check that `comline.server.customPath` points to the correct binary
+- **Flatpak**: see [Flatpak](#flatpak-vscodium-vs-code)
 
 ### No syntax highlighting
 - Ensure the file has a `.ids` extension

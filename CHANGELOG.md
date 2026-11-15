@@ -5,6 +5,11 @@ All notable changes to the "comline-vscode" extension will be documented in this
 ## [Unreleased]
 
 ### Added
+- The `char` type highlights as a primitive, and `max` as a keyword right
+  after `[` (`char[max 32]`, `T[max N]`); a field named `max` stays an
+  identifier.
+- README: running a language server other than the bundled one in Flatpak
+  VSCodium and VS Code.
 - `comline.toml` is its own language, `comline-toml`, highlighted with a
   bundled TOML grammar (Taplo's, MIT; see `syntaxes/THIRD-PARTY-NOTICES.md`)
   and served by the Comline language server: diagnostics for its shape and
@@ -14,6 +19,11 @@ All notable changes to the "comline-vscode" extension will be documented in this
   apart; `{{` and `}}` as escapes.
 
 ### Fixed
+- The bundled language server moves from `b980a6e` to `8590a0a`. The old one
+  linked a comline-core from before `T[max N]` bounds and `char`, so it
+  reported "unexpected token `max`" on `char[max 32]`. The new one also reports
+  a bare path to the package's own schema (`use types::Message`) and offers
+  `package::` instead; `test-workspace/chat.ids` is updated.
 - A lone `<` or `>` (a comparison, `->`) no longer shows as an unmatched
   bracket. Comline has no angle brackets.
 - Accepting a `code_generation.languages` completion inserts only the
