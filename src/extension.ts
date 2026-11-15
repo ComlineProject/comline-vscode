@@ -51,10 +51,8 @@ import {
   effectiveMode,
   planProgram,
   launchFor,
-  hostProbeArgs,
-  interpretHostProbe,
-  HostProbe,
-  hostProbeMessage,
+  systemProbe,
+  verifyPlan,
 } from './resolve';
 
 const execFileAsync = promisify(execFile);
