@@ -40,8 +40,8 @@ opens a menu to run the [comline CLI](https://github.com/ComlineProject/cli)
 against the current workspace, with a toast reporting success or failure:
 - **Build** — compile and freeze a new version
 - **Check** — validate without writing anything
-- **Generate** — write generated code for every configured target
-- **Clean** — remove generated code
+- **Generate** — write generated code for every configured target (`comline generation`)
+- **Clean** — remove generated code (`comline generation clean`)
 
 Each is also available from the Command Palette as `Comline: Build` /
 `Comline: Check` / `Comline: Generate` / `Comline: Clean`. Requires the
@@ -89,7 +89,7 @@ Not published there yet; use a `.vsix` from releases.
 
 ## Configuration
 
-The extension supports three modes for locating the language server binary:
+The extension supports four modes for locating the language server binary:
 
 ### 1. Bundled (Default)
 The extension includes a pre-built language server binary. No configuration needed!
@@ -118,60 +118,69 @@ Specify a custom path to the language server binary:
 }
 ```
 
+### 4. Host (`host`)
+Run the language server on the host system:
+
+```json
+{
+  "comline.server.mode": "host"
+}
+```
+
+Inside a Flatpak (below) this goes through `flatpak-spawn --host`; anywhere else
+the editor is already on the host, and `host` is the same as `path`. Set
+`comline.server.customPath` as well to run a binary that isn't on the host's
+`PATH`, such as `~/.cargo/bin/comline-lsp` (written out, `~` is not expanded).
+
+`path` and `custom` look up the program where the editor runs. `path` searches
+the editor's own `PATH` (with `PATHEXT` on Windows) and says which directories it
+searched if the server isn't there. An editor started from a launcher or a
+dock can have a different `PATH` than your shell.
+
 ### Flatpak (VSCodium, VS Code)
 
-The bundled server needs none of this. Read on only to run a different
-`comline-lsp` (a newer build, say) in the Flatpak builds of VSCodium
-(`com.vscodium.codium`) or VS Code (`com.visualstudio.code`). The editor runs
-inside a sandbox, and `path` mode does not find the server there: Flatpak always
-unsets or overrides `PATH` for the app
-([`flatpak run`](https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-run)),
-so it is the sandbox's, not your shell's. Use `custom` mode with the binary at a
-path the sandbox can read:
+The bundled server needs none of this: it is a static build and runs inside the
+sandbox. Read on only to run a different `comline-lsp` (a newer build, say), or
+the `comline` CLI, in the Flatpak builds of VSCodium (`com.vscodium.codium`) or
+VS Code (`com.visualstudio.code`).
 
-1. **Build a binary that runs in the sandbox.** The sandbox has its own runtime,
-   not your distro's libraries, so a dynamically linked build may not start. The
-   bundled Linux servers are static musl builds for that reason; build yours the
-   same way (`rustup target add x86_64-unknown-linux-musl`, a musl C compiler,
-   then `cargo build --release --target x86_64-unknown-linux-musl` in a
-   `language-server` checkout; `aarch64-unknown-linux-musl` on arm64). It must
-   be for your CPU: the host's, not the editor's.
-2. **Put it where the sandbox can read it**, one of:
-   - **Anywhere under your home directory, if the app already has host or home
-     access.** Both Flathub manifests ask for `--filesystem=host`
-     ([VSCodium](https://github.com/flathub/com.vscodium.codium/blob/master/com.vscodium.codium.yaml),
-     [VS Code](https://github.com/flathub/com.visualstudio.code/blob/master/com.visualstudio.code.yaml)),
-     so a stock install can read `~/.cargo/bin`, for instance. `flatpak info
-     --show-permissions <app-id>` lists what yours has, overrides included.
-   - **Grant read access to the directory** if you or Flatseal removed it
-     (`--nofilesystem=host`), or if it lives somewhere `host` leaves out:
-     ```bash
-     flatpak override --user --filesystem=/path/to/dir:ro com.vscodium.codium
-     flatpak override --user --filesystem=/path/to/dir:ro com.visualstudio.code
-     ```
-     Use the line for your editor. `:ro` makes the directory read-only. Paths
-     under `/usr`, `/etc`, `/bin` and the like are reserved, and a `--filesystem`
-     for them has no effect
-     ([reserved paths](https://docs.flatpak.org/en/latest/sandbox-permissions.html#reserved-paths)).
-   - **Copy it into the app's own data directory**, which the app can always
-     read: `mkdir -p ~/.var/app/<app-id>/data/comline && cp comline-lsp
-     ~/.var/app/<app-id>/data/comline/`. That is `$XDG_DATA_HOME` inside the
-     sandbox.
-3. **Point the extension at it** with an absolute path (the setting is used as
-   written, so `~` is not expanded):
-   ```json
-   {
-     "comline.server.mode": "custom",
-     "comline.server.customPath": "/home/you/.var/app/com.vscodium.codium/data/comline/comline-lsp"
-   }
-   ```
-4. **Restart.** An override applies when the app starts, so quit the editor
-   completely and reopen it. The extension reads the server settings when it
-   activates, so after changing them run `Developer: Reload Window`;
-   `Comline: Restart Language Server` starts the same binary again.
+The editor runs in a sandbox with its own `PATH` and its own runtime, so it
+can't run programs installed on your system. Install the program on the host as
+usual, and the extension runs it there with
+[`flatpak-spawn --host`](https://docs.flatpak.org/en/latest/flatpak-command-reference.html#flatpak-spawn):
 
-If the server isn't found, check the path from inside the sandbox:
-`flatpak run --command=ls com.vscodium.codium -l /path/to/comline-lsp`.
+- **`path` mode does this by itself inside a Flatpak.** For the CLI it is the
+  default, so Build/Check/Generate/Clean work with `comline` installed on the
+  host. For the server, set `"comline.server.mode": "path"` (or `"host"`).
+- If the program isn't on the host's `PATH` (the host command runs with your
+  session's `PATH`, which can lack `~/.cargo/bin`), set `"host"` mode and
+  `customPath` to its absolute path on the host. The extension checks the host
+  first and tells you what to install or which setting to change.
+- It needs `flatpak-spawn` in the sandbox and the permission to talk to
+  `org.freedesktop.Flatpak` on D-Bus, which the Flathub manifests of both
+  editors grant
+  ([VSCodium](https://github.com/flathub/com.vscodium.codium/blob/master/com.vscodium.codium.yaml),
+  [VS Code](https://github.com/flathub/com.visualstudio.code/blob/master/com.visualstudio.code.yaml):
+  `--talk-name=org.freedesktop.Flatpak`). `flatpak info --show-permissions
+  <app-id>` lists what yours has; `flatpak override --user
+  --talk-name=org.freedesktop.Flatpak <app-id>` adds it back.
+- The server's stdio is passed through, and `RUST_LOG` (the `comline.server.debug`
+  setting) is forwarded with `--env`.
+
+**A custom path** (`custom` mode) is read inside the sandbox. Both Flathub
+manifests have `--filesystem=host`, so the binary can be anywhere under your home
+directory (or another path `host` covers), but not in the host's `/usr`, `/etc`,
+`/bin` or `/lib`: those are [reserved
+paths](https://docs.flatpak.org/en/latest/sandbox-permissions.html#reserved-paths),
+a `--filesystem` for them has no effect, and the host's `/usr` is at
+`/run/host/usr`, not `/usr`. A server installed in `/usr/bin` can only be
+reached with `host` mode. A binary the sandbox can read must also run there: it
+has the Flatpak runtime's libraries, not your distro's, so a dynamically linked
+build may not start (the bundled Linux servers are static musl builds for that
+reason). `host` mode has neither limit.
+
+After changing a setting, run `Developer: Reload Window`; the extension reads the
+server settings when it activates.
 
 ### Additional Settings
 
@@ -188,7 +197,8 @@ If the server isn't found, check the path from inside the sandbox:
 ### CLI Binary Location
 
 The Build/Check/Generate/Clean commands look for `comline` on `PATH` by
-default. To use a non-`PATH` install instead:
+default (`comline.cli.mode`: `path`; inside a Flatpak, on the host, see
+[Flatpak](#flatpak-vscodium-vs-code)). To use a non-`PATH` install instead:
 
 ```json
 {
@@ -196,6 +206,13 @@ default. To use a non-`PATH` install instead:
   "comline.cli.customPath": "/path/to/comline"
 }
 ```
+
+`"host"` runs it on the host system, as for the server above, with
+`comline.cli.customPath` as the program when set.
+
+Generate runs `comline generation` and Clean runs `comline generation clean`,
+so the CLI has to be a version with those commands (cli#153); older ones had
+`generate` and `clean`.
 
 ## Usage
 
@@ -236,8 +253,9 @@ protocol UserService {
 
 ### Language server not found
 - **Default mode**: Ensure the bundled binary is included with the extension
-- **PATH mode**: Run `which comline-lsp` (Linux/Mac) or `where comline-lsp` (Windows) to verify installation
+- **PATH mode**: Run `which comline-lsp` (Linux/Mac) or `where comline-lsp` (Windows) to verify installation. The error message lists the directories searched; an editor started from a launcher can have a different `PATH` than your shell
 - **Custom mode**: Check that `comline.server.customPath` points to the correct binary
+- **Host mode**: the program has to be on the host (see the message the extension shows)
 - **Flatpak**: see [Flatpak](#flatpak-vscodium-vs-code)
 
 ### No syntax highlighting

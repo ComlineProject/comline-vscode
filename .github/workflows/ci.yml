@@ -116,6 +116,9 @@ jobs:
       - name: Compile TypeScript
         run: yarn compile
 
+      - name: Unit tests
+        run: yarn test
+
       - name: Test packaging (without binaries)
         run: npx vsce package --yarn
 

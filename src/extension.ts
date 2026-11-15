@@ -1,5 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import {
@@ -43,6 +44,16 @@ import {
   idpValueKindLabel,
   IdpFieldSchema,
 } from './idpSchema';
+import {
+  Tool,
+  Plan,
+  TOOLS,
+  effectiveMode,
+  planProgram,
+  launchFor,
+  systemProbe,
+  verifyPlan,
+} from './resolve';
 
 const execFileAsync = promisify(execFile);
 
@@ -83,7 +94,15 @@ function ensureTargetsLoaded(): Promise<void> {
 
 async function fetchTargets(): Promise<void> {
   try {
-    const { stdout } = await execFileAsync(resolveCliCommand(), ['targets'], { timeout: 5000 });
+    const plan = await resolveProgram('cli');
+    if (plan.kind === 'error') {
+      throw new Error(plan.message);
+    }
+    const launch = launchFor(plan, ['targets'], {}, process.env);
+    const { stdout } = await execFileAsync(launch.command, launch.args, {
+      timeout: 5000,
+      env: launch.env,
+    });
     const targets = new Map<string, GenerationTarget>();
     // `rust#1.85.0  (1.85.0 or later; verified up to 1.99, ...)`: the token,
     // then what versions its generator handles.
@@ -134,6 +153,18 @@ export async function activate(context: ExtensionContext): Promise<void> {
       { scheme: 'file', language: 'comline-package' },
       new LanguagesHoverProvider()
     ),
+    // The CLI commands don't depend on the language server: they're
+    // registered before it is looked up, so a server that isn't found leaves
+    // them working.
+    commands.registerCommand('comline.build', () => runCliCommand(['build'])),
+    commands.registerCommand('comline.check', () => runCliCommand(['check'])),
+    // `comline generation` and `comline generation clean` (cli#153 renamed
+    // `generate`/`clean`); the command ids stay `comline.generate`/`.clean`
+    // so keybindings and tasks that use them keep working.
+    commands.registerCommand('comline.generate', () => runCliCommand(['generation'])),
+    commands.registerCommand('comline.clean', () => runCliCommand(['generation', 'clean'])),
+    commands.registerCommand('comline.selectPackage', () => selectPackageRoot()),
+    commands.registerCommand('comline.packageStatusBarMenu', () => showPackageStatusBarMenu()),
     // No client-side formatting provider for `.idp` is registered here —
     // would be redundant and conflicting, not just unnecessary. Since
     // `documentSelector` below includes `comline-package` (needed to sync
@@ -179,34 +210,39 @@ export async function activate(context: ExtensionContext): Promise<void> {
     })
   );
 
-  const serverExecutable = getServerExecutable(context);
-
-  if (!serverExecutable) {
-    window.showErrorMessage(
-      'Comline Language Server not found. Please configure the server path in settings or ensure it is in your PATH.'
-    );
-    return;
-  }
-
-  // Check if the executable exists and is accessible
-  if (!fs.existsSync(serverExecutable)) {
-    window.showErrorMessage(
-      `Comline Language Server not found at: ${serverExecutable}. Please check your configuration.`
-    );
+  const plan = await resolveProgram('server', context);
+  if (plan.kind === 'error') {
+    window.showErrorMessage(plan.message);
     return;
   }
 
   const config = workspace.getConfiguration('comline');
   const debug = config.get<boolean>('server.debug', false);
 
+  // `comline-lsp` builds its tracing subscriber from `RUST_LOG` (see
+  // `language-server/src/main.rs`'s `EnvFilter::from_default_env()`). Run on
+  // the host, it doesn't get the editor's environment, so the variable goes
+  // through `flatpak-spawn --env=`; `launchFor` does either.
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  const launch = launchFor(plan, [], debug ? { RUST_LOG: 'debug' } : {}, process.env, {
+    watchBus: true,
+  });
+  const processOptions: { env?: Record<string, string>; cwd?: string } = {};
+  if (launch.env) {
+    processOptions.env = launch.env;
+  }
+  if (plan.kind === 'host') {
+    // `flatpak-spawn --host` runs in the working directory it is started in,
+    // which has to exist on the host: the home directory does, in the sandbox
+    // and out of it.
+    processOptions.cwd = os.homedir();
+  }
+
   const serverOptions: ServerOptions = {
-    command: serverExecutable,
+    command: launch.command,
+    args: launch.args,
     transport: TransportKind.stdio,
-    // `comline-lsp` builds its tracing subscriber from `RUST_LOG` (see
-    // `language-server/src/main.rs`'s `EnvFilter::from_default_env()`) — an
-    // env var name, not a JS property, hence the naming-convention opt-out.
-    // eslint-disable-next-line @typescript-eslint/naming-convention
-    options: debug ? { env: { ...process.env, RUST_LOG: 'debug' } } : undefined,
+    options: Object.keys(processOptions).length > 0 ? processOptions : undefined,
   };
 
   const clientOptions: LanguageClientOptions = {
@@ -264,12 +300,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
       await client.start();
       window.showInformationMessage('Comline Language Server restarted.');
     }),
-    commands.registerCommand('comline.build', () => runCliCommand('build')),
-    commands.registerCommand('comline.check', () => runCliCommand('check')),
-    commands.registerCommand('comline.generate', () => runCliCommand('generate')),
-    commands.registerCommand('comline.clean', () => runCliCommand('clean')),
-    commands.registerCommand('comline.selectPackage', () => selectPackageRoot()),
-    commands.registerCommand('comline.packageStatusBarMenu', () => showPackageStatusBarMenu())
   );
 
   try {
@@ -420,16 +450,16 @@ async function showPackageQuickPick(
 // shortcut hint for an entry present here.
 const COMMAND_KEYBINDING_LABELS: Record<string, string> = {};
 
-const CLI_ACTIONS: { subcommand: string; label: string }[] = [
-  { subcommand: 'build', label: 'Build' },
-  { subcommand: 'check', label: 'Check' },
-  { subcommand: 'generate', label: 'Generate' },
-  { subcommand: 'clean', label: 'Clean' },
+const CLI_ACTIONS: { subcommand: string[]; label: string }[] = [
+  { subcommand: ['build'], label: 'Build' },
+  { subcommand: ['check'], label: 'Check' },
+  { subcommand: ['generation'], label: 'Generate' },
+  { subcommand: ['generation', 'clean'], label: 'Clean' },
 ];
 
 interface StatusBarMenuItem extends QuickPickItem {
   action?: 'switch' | 'run';
-  subcommand?: string;
+  subcommand?: string[];
   root?: string;
 }
 
@@ -528,18 +558,31 @@ async function resolvePackageRoot(): Promise<string | undefined> {
   return picked;
 }
 
-function resolveCliCommand(): string {
+/** Where the language server or the CLI is and how to run it, from the
+ * `comline.server.*` / `comline.cli.*` settings (see `resolve.ts`). A plan
+ * that runs on the host through `flatpak-spawn` has been checked against the
+ * host: the program is there, and the editor may talk to it. Never throws;
+ * what went wrong is the `error` plan's message. */
+async function resolveProgram(tool: Tool, context?: ExtensionContext): Promise<Plan> {
+  const info = TOOLS[tool];
   const config = workspace.getConfiguration('comline');
-  const mode = config.get<string>('cli.mode', 'path');
-  const customPath = config.get<string>('cli.customPath', '');
-  return mode === 'custom' && customPath ? customPath : 'comline';
+  const section = tool === 'server' ? 'server' : 'cli';
+  const mode = config.get<string>(`${section}.mode`, info.defaultMode);
+  const customPath = config.get<string>(`${section}.customPath`, '');
+
+  const effective = effectiveMode(tool, mode, customPath);
+  if (effective.notice) {
+    window.showWarningMessage(effective.notice);
+  }
+  const bundled = effective.mode === 'bundled' && context ? getBundledServerPath(context) : null;
+  return verifyPlan(tool, planProgram({ tool, mode, customPath, bundled }, systemProbe()));
 }
 
 /** `rootOverride` runs against a specific package without touching the
  * persisted active-package selection — used by the status bar menu's
  * per-package actions. Omit it to resolve the active package normally. */
 async function runCliCommand(
-  subcommand: string,
+  subcommand: string[],
   extraArgs: string[] = [],
   rootOverride?: string
 ): Promise<void> {
@@ -559,16 +602,21 @@ async function runCliCommand(
   // otherwise — a ProcessExecution-spawned task may not get a PTY, so
   // `CLICOLOR_FORCE` (which `anstream` explicitly honors, bypassing TTY
   // detection) guarantees color here the same as typing the command by hand.
-  const args = ['--path', packageRoot, subcommand, ...extraArgs];
+  const plan = await resolveProgram('cli');
+  if (plan.kind === 'error') {
+    window.showErrorMessage(plan.message);
+    return;
+  }
+
+  const name = subcommand.join(' ');
+  // eslint-disable-next-line @typescript-eslint/naming-convention
+  const launch = launchFor(plan, ['--path', packageRoot, ...subcommand, ...extraArgs], { CLICOLOR_FORCE: '1' }, process.env);
   const task = new Task(
-    { type: 'comline', subcommand },
+    { type: 'comline', subcommand: name },
     TaskScope.Workspace,
-    `Comline: ${subcommand} (${packageLabel(packageRoot)})`,
+    `Comline: ${name} (${packageLabel(packageRoot)})`,
     'comline',
-    new ProcessExecution(resolveCliCommand(), args, {
-      // eslint-disable-next-line @typescript-eslint/naming-convention
-      env: { ...process.env, CLICOLOR_FORCE: '1' },
-    })
+    new ProcessExecution(launch.command, launch.args, launch.env ? { env: launch.env } : {})
   );
   task.presentationOptions = {
     reveal: TaskRevealKind.Always,
@@ -582,10 +630,10 @@ async function runCliCommand(
     }
     disposable.dispose();
     if (e.exitCode === 0) {
-      window.showInformationMessage(`Comline: ${subcommand} succeeded.`);
+      window.showInformationMessage(`Comline: ${name} succeeded.`);
     } else {
       window.showErrorMessage(
-        `Comline: ${subcommand} failed (exit ${e.exitCode}). See the terminal for details.`
+        `Comline: ${name} failed (exit ${e.exitCode}). See the terminal for details.`
       );
     }
   });
@@ -688,32 +736,6 @@ class LanguagesHoverProvider {
     // server's hover: what its generator supports at that version.
     const field = resolveFieldByPathAndWord(path, word);
     return field ? new Hover(renderFieldHover(field), range) : undefined;
-  }
-}
-
-function getServerExecutable(context: ExtensionContext): string | null {
-  const config = workspace.getConfiguration('comline');
-  const mode = config.get<string>('server.mode', 'bundled');
-  const customPath = config.get<string>('server.customPath', '');
-
-  switch (mode) {
-    case 'bundled':
-      return getBundledServerPath(context);
-
-    case 'path':
-      return 'comline-lsp'; // Will be searched in system PATH
-
-    case 'custom':
-      if (!customPath) {
-        window.showWarningMessage(
-          'Comline: Custom server path is not configured. Fallback to bundled server.'
-        );
-        return getBundledServerPath(context);
-      }
-      return customPath;
-
-    default:
-      return getBundledServerPath(context);
   }
 }
 

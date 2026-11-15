@@ -1,0 +1,343 @@
+name: Flatpak
+
+# Proves what the README promises about Flatpak, so nobody has to check it by
+# hand: the extension's real program resolution (out/resolve.js, the module the
+# extension loads) runs inside Flathub's real VSCodium sandbox, and starts the
+# language server and the CLI on the host through a real `flatpak-spawn --host`.
+# scripts/flatpak-e2e.cjs lists the scenarios; each one fails the job.
+#
+#   1. bundled      the static comline-lsp runs in the sandbox, answers initialize
+#   2. host         comline-lsp runs on the host (found by name; by a path in the
+#                   host-only /usr; by a path in the home directory): initialize
+#                   works, RUST_LOG=debug reaches it, a clean stop ends it, and
+#                   killing flatpak-spawn ends it too (--watch-bus)
+#   3. host probe   present, missing, and flatpak-spawn itself failing
+#   4. path         inside the sandbox resolves to the host
+#   5. custom       a path under the host's /usr is an error that says `host`
+#   6. CLI          `comline generation` and `generation clean`, through the
+#                   launch the extension builds, change the files on disk
+#
+# What it tests, and why it is built this way:
+#
+# - The programs are this commit's. comline-lsp is built here from the
+#   language-server rev package.json pins (`comline.languageServer.rev`), the
+#   way release.yml builds the one the extension ships: static musl, in the
+#   tools image. comline (the CLI) is built from a pinned commit (it has no
+#   release yet). The sha256 of each is logged where it is used.
+# - The sandbox is a container: ghcr.io/comlineproject/ci-flatpak (the
+#   ComlineProject/ci-images repository). It has Flatpak, bubblewrap,
+#   xdg-dbus-proxy and `dbus-run-session`, and Flathub's real
+#   `com.vscodium.codium` (the permissions Flathub gives it, not a stand-in),
+#   installed at an exact Flathub commit. Nothing is installed while the job
+#   runs. The VSCodium it ran on is logged; a new Flathub build is a new image
+#   (a digest bump), reviewed like any other change.
+# - `--privileged`: bubblewrap makes namespaces and mounts /proc, which a
+#   container's default seccomp profile and masked paths forbid.
+# - The container is the "host" of `flatpak-spawn --host`: the session helper
+#   runs in it, as `dbus-run-session` starts the session bus the helper needs
+#   (a runner has none). A path under /usr/local/bin is the host-only /usr: the
+#   sandbox has the runtime's /usr, so it does not see it.
+# - The job runs as root, as every job container does (the workspace is mounted
+#   from the runner); flatpak needs no helper for that. The image's
+#   XDG_RUNTIME_DIR (/run/user/0) is the runtime directory flatpak wants.
+
+on:
+  pull_request:
+    paths:
+      - "src/resolve.ts"
+      - "src/extension.ts"
+      - "package.json"
+      - ".github/workflows/flatpak.yml"
+      - "scripts/flatpak-e2e.cjs"
+  push:
+    branches: [main]
+    paths:
+      - "src/resolve.ts"
+      - "src/extension.ts"
+      - "package.json"
+      - ".github/workflows/flatpak.yml"
+      - "scripts/flatpak-e2e.cjs"
+  schedule:
+    # Mondays: the runner's kernel, Docker and AppArmor move without a change
+    # here, and a sandbox that stops working on them should show up in a week.
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request supersedes this run; a branch's runs
+# queue instead.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # ComlineProject/cli, main when this was written. Bump with the CLI's
+  # command set (it has to have `generation`, cli#153).
+  CLI_REV: e79092a3cfec9f2b3d02a45189f51e6a90fb8071
+  APP_ID: com.vscodium.codium
+
+jobs:
+  # out/resolve.js: the compiled module the test imports. Compiled on the
+  # runner (which has yarn), so the sandbox's container needs no Node.
+  compile:
+    name: Compile the extension
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20.20.2
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Compile TypeScript
+        run: yarn compile
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: extension-out
+          path: out
+          if-no-files-found: error
+
+  cli:
+    name: Build comline (CLI)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The tools image: Rust 1.99.1, the native musl target and musl-gcc. A
+    # static binary runs on the runner whatever its libc.
+    container: ghcr.io/comlineproject/ci-tools@sha256:b9301f9caf3e47f0b839de85efda178f698a55daf7fc387b463adeec93ecd433
+    steps:
+      - name: Checkout the CLI at the pinned rev
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ComlineProject/cli
+          ref: ${{ env.CLI_REV }}
+          persist-credentials: false
+
+      - name: musl C compiler
+        run: |
+          # comline-core compiles its tree-sitter grammar from C at build time.
+          echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: x86_64-unknown-linux-musl
+
+      # Rust only: the TypeScript generator and wasmtime are not under test.
+      - name: Build
+        run: >
+          cargo build --release --locked
+          --target x86_64-unknown-linux-musl
+          --no-default-features --features gen-rust
+
+      - name: Static, and it runs
+        run: |
+          bin=target/x86_64-unknown-linux-musl/release/comline
+          if readelf -lW "$bin" | grep -q INTERP; then
+            echo "::error::comline is dynamically linked"
+            exit 1
+          fi
+          "$bin" targets
+          sha256sum "$bin"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: comline-cli
+          path: target/x86_64-unknown-linux-musl/release/comline
+          if-no-files-found: error
+
+  # The language server this commit would ship: the pin in package.json, built
+  # as release.yml's linux-x64 build does (the same image and target).
+  lsp:
+    name: Build comline-lsp (pinned)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container: ghcr.io/comlineproject/ci-tools@sha256:b9301f9caf3e47f0b839de85efda178f698a55daf7fc387b463adeec93ecd433
+    steps:
+      - name: Checkout extension (for the pin)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The pinned language-server rev
+        id: pin
+        run: |
+          rev=$(jq -r '.comline.languageServer.rev' package.json)
+          [[ "$rev" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::no language-server rev in package.json: $rev"; exit 1; }
+          echo "language-server $rev"
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout language-server at the pinned rev
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ComlineProject/language-server
+          ref: ${{ steps.pin.outputs.rev }}
+          path: language-server
+          persist-credentials: false
+
+      - name: musl C compiler
+        run: |
+          # comline-core compiles its tree-sitter grammar from C at build time.
+          echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: language-server
+          key: x86_64-unknown-linux-musl
+
+      # The command release.yml runs for linux-x64.
+      - name: Build
+        working-directory: language-server
+        run: cargo build --release --target x86_64-unknown-linux-musl
+
+      - name: Static, and it runs
+        run: |
+          bin=language-server/target/x86_64-unknown-linux-musl/release/comline-lsp
+          if readelf -lW "$bin" | grep -q INTERP; then
+            echo "::error::comline-lsp is dynamically linked"
+            exit 1
+          fi
+          sha256sum "$bin"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: comline-lsp
+          path: language-server/target/x86_64-unknown-linux-musl/release/comline-lsp
+          if-no-files-found: error
+
+  sandbox:
+    name: VSCodium sandbox (Flathub)
+    needs: [compile, cli, lsp]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    container:
+      image: ghcr.io/comlineproject/ci-flatpak@sha256:664637fe0967ad5e01f47e9356fdd941bd2fd03b3e4ab268fcc37aef3916e0a7
+      options: --privileged
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # -- what is under test ---------------------------------------------------
+
+      - name: The compiled extension
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: extension-out
+          path: out
+
+      - name: The CLI (built above)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: comline-cli
+          path: ${{ runner.temp }}/cli
+
+      - name: The language server (built above, from the pinned rev)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: comline-lsp
+          path: ${{ runner.temp }}/bundled
+
+      # Static: checked where each was built (a static binary is what runs in
+      # the sandbox, whose libraries are the runtime's; scenario 1 runs it).
+      - name: The programs, as built
+        run: |
+          chmod +x "$RUNNER_TEMP/bundled/comline-lsp" "$RUNNER_TEMP/cli/comline"
+          sha256sum "$RUNNER_TEMP/bundled/comline-lsp" "$RUNNER_TEMP/cli/comline"
+
+      # -- Flatpak -------------------------------------------------------------
+
+      - name: Which image, which VSCodium
+        run: |
+          echo "VSCodium commit: $(cat /etc/ci-flatpak/vscodium-commit)"
+          echo "runtime commit:  $(cat /etc/ci-flatpak/runtime-commit)"
+          flatpak --version
+          flatpak list --system --columns=ref,active,origin,installation
+          [ "$(flatpak info --system --show-commit "$APP_ID")" = "$(cat /etc/ci-flatpak/vscodium-commit)" ]
+
+      # The documented facts the extension relies on, as the installed app has
+      # them: if Flathub drops either permission this is where it shows.
+      - name: The app has the permissions host mode needs
+        run: |
+          permissions=$(flatpak info --system --show-permissions "$APP_ID")
+          grep -E '^filesystems=.*\bhost\b' <<<"$permissions"
+          grep -E '^org\.freedesktop\.Flatpak=talk' <<<"$permissions"
+
+      # -- the session ---------------------------------------------------------
+
+      - name: Can this container run a Flatpak sandbox at all?
+        run: |
+          sysctl kernel.apparmor_restrict_unprivileged_userns kernel.unprivileged_userns_clone 2>&1 || true
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+          test -d "$XDG_RUNTIME_DIR"
+          # shellcheck disable=SC2016 # $FLATPAK_ID is for the shell inside the sandbox
+          flatpak run --command=sh "$APP_ID" -c 'echo "inside the sandbox: $FLATPAK_ID"; cat /.flatpak-info | head -5'
+
+      - name: Put the programs where the scenarios expect them
+        run: |
+          # The host-only /usr: a file the sandbox cannot see at that path (its
+          # /usr is the runtime's). The container is the host here.
+          install -m 755 "$RUNNER_TEMP/bundled/comline-lsp" /usr/local/bin/comline-lsp
+          # A path under the home directory that is on no PATH.
+          mkdir -p "$HOME/e2e/hostonly"
+          install -m 755 "$RUNNER_TEMP/bundled/comline-lsp" "$HOME/e2e/hostonly/comline-lsp"
+          # The CLI: on the host session's PATH, as ~/.local/bin is for a user.
+          mkdir -p "$HOME/.local/bin"
+          install -m 755 "$RUNNER_TEMP/cli/comline" "$HOME/.local/bin/comline"
+          # A package to generate code from, made by the CLI itself.
+          (cd "$HOME/e2e" && "$HOME/.local/bin/comline" new tinypkg && ls -R tinypkg)
+          # What the test reads.
+          cat > "$HOME/e2e/config.json" <<EOF
+          {
+            "repo": "$GITHUB_WORKSPACE",
+            "bundledLsp": "$RUNNER_TEMP/bundled/comline-lsp",
+            "hostLspUsr": "/usr/local/bin/comline-lsp",
+            "hostLspHome": "$HOME/e2e/hostonly/comline-lsp",
+            "package": "$HOME/e2e/tinypkg",
+            "appId": "$APP_ID"
+          }
+          EOF
+          cat "$HOME/e2e/config.json"
+
+      - name: Find the app's Electron binary
+        id: electron
+        run: |
+          flatpak run --command=sh "$APP_ID" -c 'ls -l /app/bin /app/share/codium | head -40'
+          flatpak run --command=sh "$APP_ID" -c 'test -x /app/share/codium/com.vscodium.codium'
+          echo "bin=/app/share/codium/com.vscodium.codium" >> "$GITHUB_OUTPUT"
+
+      # -- the scenarios -------------------------------------------------------
+
+      - name: Scenarios, inside the sandbox
+        env:
+          ELECTRON: ${{ steps.electron.outputs.bin }}
+        run: |
+          # The host session's PATH, which `flatpak-spawn --host` programs get:
+          # it is the environment the session bus is started in.
+          export PATH="$HOME/.local/bin:$PATH"
+          # Electron as plain Node (no window, no display), in the real sandbox.
+          dbus-run-session -- flatpak run \
+            --command="$ELECTRON" \
+            --env=ELECTRON_RUN_AS_NODE=1 \
+            "$APP_ID" \
+            "$GITHUB_WORKSPACE/scripts/flatpak-e2e.cjs" "$HOME/e2e/config.json"
