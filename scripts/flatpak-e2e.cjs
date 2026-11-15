@@ -276,6 +276,42 @@ scenario('2c. host, customPath in the home directory: killing flatpak-spawn stop
   await waitForNoHostServer('after killing flatpak-spawn');
 });
 
+scenario('2d. --watch-bus is what ends a host process when flatpak-spawn dies (with a control)', async () => {
+  // comline-lsp also exits when its stdin closes, so 2c alone doesn't prove
+  // --watch-bus. `sleep` doesn't read stdin: only the bus watch can end it.
+  const plan = { kind: 'host', spawn: spawnPath, program: 'sleep' };
+  const hostSleeps = async (seconds) =>
+    (await onHost('pgrep -f "^sleep $1\\$" || true', String(seconds))).split('\n').filter((l) => l.trim());
+  const waitFor = async (seconds, wanted, what) => {
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      if ((await hostSleeps(seconds)).length > 0 === wanted) {
+        return;
+      }
+      assert.ok(Date.now() < deadline, `${what}: still ${wanted ? 'absent' : 'running'} after 15s`);
+      await sleep(250);
+    }
+  };
+
+  const watched = r.launchFor(plan, ['3141'], {}, process.env, { watchBus: true });
+  const a = spawn(watched.command, watched.args, { stdio: ['pipe', 'ignore', 'ignore'] });
+  await waitFor(3141, true, 'the watched sleep starting');
+  a.kill('SIGKILL');
+  await waitFor(3141, false, 'the watched sleep after killing flatpak-spawn');
+
+  // The control: the same without --watch-bus is left running.
+  const unwatched = r.launchFor(plan, ['3142'], {}, process.env, { watchBus: false });
+  const b = spawn(unwatched.command, unwatched.args, { stdio: ['pipe', 'ignore', 'ignore'] });
+  try {
+    await waitFor(3142, true, 'the unwatched sleep starting');
+    b.kill('SIGKILL');
+    await sleep(3000);
+    assert.equal((await hostSleeps(3142)).length, 1, 'without --watch-bus the host process should outlive flatpak-spawn');
+  } finally {
+    await onHost('pkill -f "^sleep 3142$" || true');
+  }
+});
+
 scenario('3. host probe: ok, missing, and flatpak-spawn itself failing', async () => {
   const run = async (program, env = process.env) => {
     try {
