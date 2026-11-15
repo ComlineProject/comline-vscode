@@ -47,7 +47,6 @@ import {
 import {
   Tool,
   Plan,
-  Probe,
   TOOLS,
   effectiveMode,
   planProgram,
@@ -561,28 +560,6 @@ async function resolvePackageRoot(): Promise<string | undefined> {
   return picked;
 }
 
-/** What the resolution reads from this machine. */
-function systemProbe(): Probe {
-  return {
-    platform: process.platform,
-    env: process.env,
-    exists: (file) => fs.existsSync(file),
-    isExecutable: (file) => {
-      try {
-        if (!fs.statSync(file).isFile()) {
-          return false;
-        }
-        if (process.platform !== 'win32') {
-          fs.accessSync(file, fs.constants.X_OK);
-        }
-        return true;
-      } catch {
-        return false;
-      }
-    },
-  };
-}
-
 /** Where the language server or the CLI is and how to run it, from the
  * `comline.server.*` / `comline.cli.*` settings (see `resolve.ts`). A plan
  * that runs on the host through `flatpak-spawn` has been checked against the
@@ -600,32 +577,7 @@ async function resolveProgram(tool: Tool, context?: ExtensionContext): Promise<P
     window.showWarningMessage(effective.notice);
   }
   const bundled = effective.mode === 'bundled' && context ? getBundledServerPath(context) : null;
-  const plan = planProgram({ tool, mode, customPath, bundled }, systemProbe());
-  if (plan.kind !== 'host') {
-    return plan;
-  }
-
-  let result: HostProbe;
-  try {
-    const { stdout, stderr } = await execFileAsync(plan.spawn, hostProbeArgs(plan.program), {
-      timeout: 10000,
-    });
-    result = interpretHostProbe({ exitCode: 0, stdout, stderr });
-  } catch (err) {
-    const e = err as { code?: number | string; killed?: boolean; stdout?: string; stderr?: string; message?: string };
-    result = interpretHostProbe({
-      exitCode: e.killed ? 'timed out' : e.code,
-      stdout: e.stdout ?? '',
-      stderr: e.stderr ?? (e.code === undefined ? String(e.message ?? err) : ''),
-    });
-  }
-  if (!result.ok) {
-    return {
-      kind: 'error',
-      message: hostProbeMessage(tool, plan.program, result, process.env.FLATPAK_ID),
-    };
-  }
-  return plan;
+  return verifyPlan(tool, planProgram({ tool, mode, customPath, bundled }, systemProbe()));
 }
 
 /** `rootOverride` runs against a specific package without touching the

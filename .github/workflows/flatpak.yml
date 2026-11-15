@@ -1,0 +1,313 @@
+name: Flatpak
+
+# Proves what the README promises about Flatpak, so nobody has to check it by
+# hand: the extension's real program resolution (out/resolve.js, the module the
+# extension loads) runs inside Flathub's real VSCodium sandbox, and starts the
+# language server and the CLI on the host through a real `flatpak-spawn --host`.
+# scripts/flatpak-e2e.cjs lists the scenarios; each one fails the job.
+#
+#   1. bundled      the static comline-lsp runs in the sandbox, answers initialize
+#   2. host         comline-lsp runs on the host (found by name; by a path in the
+#                   host-only /usr; by a path in the home directory): initialize
+#                   works, RUST_LOG=debug reaches it, a clean stop ends it, and
+#                   killing flatpak-spawn ends it too (--watch-bus)
+#   3. host probe   present, missing, and flatpak-spawn itself failing
+#   4. path         inside the sandbox resolves to the host
+#   5. custom       a path under the host's /usr is an error that says `host`
+#   6. CLI          `comline generation` and `generation clean`, through the
+#                   launch the extension builds, change the files on disk
+#
+# What it needs, and why it is built this way:
+#
+# - A VM. Flatpak's sandbox (bubblewrap, user namespaces) does not run inside
+#   our CI container images. `ubuntu-24.04` is the VM the other workflows use.
+# - `flatpak` from apt, at run time. EXCEPTION to the org's rule against
+#   installing packages while a job runs: the sandbox under test IS Flatpak,
+#   the runner image does not have it, and there is no pinned image that does.
+#   So the packages are pinned to exact versions (below) and the install is
+#   retried on network failure. Ubuntu keeps only its current security update
+#   of a package, so a version here goes stale when Ubuntu ships the next one:
+#   the weekly run turns that into a failed run that says which pin to move.
+# - `com.vscodium.codium` from Flathub, user installation: the real app, with
+#   the permissions Flathub gives it, not a stand-in. It follows Flathub's
+#   current build, on purpose: a weekly run is how a change to its permissions
+#   (--talk-name=org.freedesktop.Flatpak, --filesystem=host) is noticed. The
+#   installed commit is logged, and the install is cached by that commit.
+# - `dbus-run-session`: `flatpak-spawn --host` talks to the session helper
+#   over the session bus; a runner has none.
+# - comline-lsp: the one the latest GitHub release ships (the linux-x64
+#   package's bundled binary), not built again here. Which release is logged.
+# - comline (CLI): built here from a pinned commit. It has no release yet.
+
+on:
+  pull_request:
+    paths:
+      - "src/resolve.ts"
+      - "src/extension.ts"
+      - "package.json"
+      - ".github/workflows/flatpak.yml"
+      - "scripts/flatpak-e2e.cjs"
+  push:
+    branches: [main]
+    paths:
+      - "src/resolve.ts"
+      - "src/extension.ts"
+      - "package.json"
+      - ".github/workflows/flatpak.yml"
+      - "scripts/flatpak-e2e.cjs"
+  schedule:
+    # Mondays: Flathub and Ubuntu move without a change here.
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request supersedes this run; a branch's runs
+# queue instead.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  # ComlineProject/cli, main when this was written. Bump with the CLI's
+  # command set (it has to have `generation`, cli#153).
+  CLI_REV: e79092a3cfec9f2b3d02a45189f51e6a90fb8071
+  # Ubuntu 24.04 (noble), noble-updates/-security.
+  FLATPAK_VERSION: 1.14.6-1ubuntu0.1
+  BUBBLEWRAP_VERSION: 0.9.0-1ubuntu0.3
+  XDG_DBUS_PROXY_VERSION: 0.1.5-1ubuntu0.2
+  APP_ID: com.vscodium.codium
+
+jobs:
+  cli:
+    name: Build comline (CLI)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    # The tools image: Rust 1.99.1, the native musl target and musl-gcc. A
+    # static binary runs on the runner whatever its libc.
+    container: ghcr.io/comlineproject/ci-tools@sha256:b9301f9caf3e47f0b839de85efda178f698a55daf7fc387b463adeec93ecd433
+    steps:
+      - name: Checkout the CLI at the pinned rev
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ComlineProject/cli
+          ref: ${{ env.CLI_REV }}
+          persist-credentials: false
+
+      - name: musl C compiler
+        run: |
+          # comline-core compiles its tree-sitter grammar from C at build time.
+          echo "CC_x86_64_unknown_linux_musl=musl-gcc" >> "$GITHUB_ENV"
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: x86_64-unknown-linux-musl
+
+      # Rust only: the TypeScript generator and wasmtime are not under test.
+      - name: Build
+        run: >
+          cargo build --release --locked
+          --target x86_64-unknown-linux-musl
+          --no-default-features --features gen-rust
+
+      - name: Static, and it runs
+        run: |
+          bin=target/x86_64-unknown-linux-musl/release/comline
+          if readelf -lW "$bin" | grep -q INTERP; then
+            echo "::error::comline is dynamically linked"
+            exit 1
+          fi
+          "$bin" targets
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: comline-cli
+          path: target/x86_64-unknown-linux-musl/release/comline
+          if-no-files-found: error
+
+  sandbox:
+    name: VSCodium sandbox (Flathub)
+    needs: cli
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 20.20.2
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # out/resolve.js: what the test imports.
+      - name: Compile TypeScript
+        run: yarn compile
+
+      # -- the programs the extension will run -------------------------------
+
+      - name: The CLI (built above)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: comline-cli
+          path: ${{ runner.temp }}/cli
+
+      - name: The language server (the latest release's bundled one)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 --json tagName --jq '.[0].tagName')
+          echo "language server from release $tag"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern '*-linux-x64.vsix' --dir "$RUNNER_TEMP/release"
+          mkdir -p "$RUNNER_TEMP/bundled"
+          unzip -p "$RUNNER_TEMP"/release/*-linux-x64.vsix extension/bin/linux-x64/comline-lsp \
+            > "$RUNNER_TEMP/bundled/comline-lsp"
+          chmod +x "$RUNNER_TEMP/bundled/comline-lsp"
+          sha256sum "$RUNNER_TEMP/bundled/comline-lsp"
+          # The bundled server is static, which is why it runs in a sandbox.
+          if readelf -lW "$RUNNER_TEMP/bundled/comline-lsp" | grep -q INTERP; then
+            echo "::error::the release's comline-lsp is dynamically linked"
+            exit 1
+          fi
+
+      # -- Flatpak -------------------------------------------------------------
+
+      # EXCEPTION to "no packages installed while a job runs": see the header.
+      # Exact versions, retried on a network failure.
+      - name: Install Flatpak (apt, pinned)
+        run: |
+          retry() {
+            for attempt in 1 2 3 4; do
+              "$@" && return 0
+              echo "attempt $attempt failed: $*" >&2
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+          retry sudo apt-get update -q
+          retry sudo apt-get install -y -q --no-install-recommends \
+            "flatpak=$FLATPAK_VERSION" \
+            "bubblewrap=$BUBBLEWRAP_VERSION" \
+            "xdg-dbus-proxy=$XDG_DBUS_PROXY_VERSION"
+          flatpak --version
+          command -v dbus-run-session
+
+      - name: Flathub, and which build of the app
+        id: app
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          commit=$(flatpak remote-info --user --show-commit flathub "$APP_ID")
+          echo "Flathub's current $APP_ID commit: $commit"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+
+      # Keyed on the app's commit: most runs find it and download nothing. A new
+      # Flathub build misses, falls back to the latest older cache (the
+      # runtimes are shared), and updates it.
+      - name: Flatpak cache
+        id: cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-${{ env.FLATPAK_VERSION }}-${{ env.APP_ID }}-${{ steps.app.outputs.commit }}
+          restore-keys: |
+            flatpak-${{ env.FLATPAK_VERSION }}-${{ env.APP_ID }}-
+
+      - name: Install the app
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          echo "cache hit: ${{ steps.cache.outputs.cache-hit }}"
+          if [ "${{ steps.cache.outputs.cache-hit }}" = true ]; then
+            echo "restored from the cache: nothing to download"
+          else
+            flatpak install --user --noninteractive --assumeyes flathub "$APP_ID"
+            # A restored older build is brought up to date.
+            flatpak update --user --noninteractive --assumeyes "$APP_ID"
+          fi
+          flatpak info --user --show-commit "$APP_ID"
+          flatpak info --user --show-permissions "$APP_ID"
+          du -sh ~/.local/share/flatpak
+
+      # The documented facts the extension relies on, as the installed app has
+      # them: if Flathub drops either permission this is where it shows.
+      - name: The app has the permissions host mode needs
+        run: |
+          permissions=$(flatpak info --user --show-permissions "$APP_ID")
+          grep -E '^filesystems=.*\bhost\b' <<<"$permissions"
+          grep -E '^org\.freedesktop\.Flatpak=talk' <<<"$permissions"
+
+      # -- the session ---------------------------------------------------------
+
+      - name: Can this runner run a Flatpak sandbox at all?
+        run: |
+          sysctl kernel.apparmor_restrict_unprivileged_userns kernel.unprivileged_userns_clone 2>&1 || true
+          # flatpak wants a runtime dir, which a runner has no login session to make.
+          sudo mkdir -p "/run/user/$(id -u)"
+          sudo chown "$(id -u):$(id -g)" "/run/user/$(id -u)"
+          chmod 700 "/run/user/$(id -u)"
+          XDG_RUNTIME_DIR="/run/user/$(id -u)" flatpak run --command=sh "$APP_ID" -c 'echo "inside the sandbox: $FLATPAK_ID"; cat /.flatpak-info | head -5'
+
+      - name: Put the programs where the scenarios expect them
+        run: |
+          # The host-only /usr: a file the sandbox cannot see at that path.
+          sudo install -m 755 "$RUNNER_TEMP/bundled/comline-lsp" /usr/local/bin/comline-lsp
+          # A path under the home directory that is on no PATH.
+          mkdir -p "$HOME/e2e/hostonly"
+          install -m 755 "$RUNNER_TEMP/bundled/comline-lsp" "$HOME/e2e/hostonly/comline-lsp"
+          # The CLI: on the host session's PATH, as ~/.local/bin is for a user.
+          mkdir -p "$HOME/.local/bin"
+          install -m 755 "$RUNNER_TEMP/cli/comline" "$HOME/.local/bin/comline"
+          # A package to generate code from, made by the CLI itself.
+          (cd "$HOME/e2e" && "$HOME/.local/bin/comline" new tinypkg && ls -R tinypkg)
+          # What the test reads.
+          APP_REPO="$GITHUB_WORKSPACE" BUNDLED="$RUNNER_TEMP/bundled/comline-lsp" node -e '
+            const home = process.env.HOME;
+            require("fs").writeFileSync(home + "/e2e/config.json", JSON.stringify({
+              repo: process.env.APP_REPO,
+              bundledLsp: process.env.BUNDLED,
+              hostLspUsr: "/usr/local/bin/comline-lsp",
+              hostLspHome: home + "/e2e/hostonly/comline-lsp",
+              package: home + "/e2e/tinypkg",
+              appId: process.env.APP_ID,
+            }, null, 2));'
+          cat "$HOME/e2e/config.json"
+
+      - name: Find the app's Electron binary
+        id: electron
+        run: |
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          flatpak run --command=sh "$APP_ID" -c 'ls -l /app/bin /app/share/codium | head -40'
+          flatpak run --command=sh "$APP_ID" -c 'test -x /app/share/codium/codium'
+          echo "bin=/app/share/codium/codium" >> "$GITHUB_OUTPUT"
+
+      # -- the scenarios -------------------------------------------------------
+
+      - name: Scenarios, inside the sandbox
+        env:
+          ELECTRON: ${{ steps.electron.outputs.bin }}
+        run: |
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          # The host session's PATH, which `flatpak-spawn --host` programs get:
+          # it is the environment the session bus is started in.
+          export PATH="$HOME/.local/bin:$PATH"
+          # Electron as plain Node (no window, no display), in the real sandbox.
+          dbus-run-session -- flatpak run \
+            --command="$ELECTRON" \
+            --env=ELECTRON_RUN_AS_NODE=1 \
+            "$APP_ID" \
+            "$GITHUB_WORKSPACE/scripts/flatpak-e2e.cjs" "$HOME/e2e/config.json"

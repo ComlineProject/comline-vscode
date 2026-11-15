@@ -15,7 +15,12 @@
 //            when the editor runs in a Flatpak; outside one, the host is
 //            this machine and it is `path`/`custom` resolution
 
+import * as fs from 'fs';
 import * as path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 
 export type Tool = 'server' | 'cli';
 export type Mode = 'bundled' | 'path' | 'custom' | 'host';
@@ -61,6 +66,30 @@ export interface Probe {
   isExecutable(file: string): boolean;
   /** Anything exists at this path. */
   exists(file: string): boolean;
+}
+
+/** What the resolution reads from this machine: the real file system and
+ * environment. The extension and the Flatpak end-to-end test
+ * (`scripts/flatpak-e2e.cjs`) both use this one. */
+export function systemProbe(): Probe {
+  return {
+    platform: process.platform,
+    env: process.env,
+    exists: (file) => fs.existsSync(file),
+    isExecutable: (file) => {
+      try {
+        if (!fs.statSync(file).isFile()) {
+          return false;
+        }
+        if (process.platform !== 'win32') {
+          fs.accessSync(file, fs.constants.X_OK);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
 }
 
 // -- PATH ---------------------------------------------------------------
@@ -416,4 +445,37 @@ export function hostProbeMessage(tool: Tool, program: string, probe: HostProbe, 
     `have it; \`flatpak override --user --talk-name=org.freedesktop.Flatpak ${appId ?? '<app id>'}\` ` +
     `grants it).`
   );
+}
+
+/** A plan, checked against the world: a `host` plan has to find the program
+ * on the host (and `flatpak-spawn` has to be allowed to reach it) before it is
+ * worth running; any other plan is returned as it is. Never throws: what went
+ * wrong is the `error` plan's message. */
+export async function verifyPlan(
+  tool: Tool,
+  plan: Plan,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<Plan> {
+  if (plan.kind !== 'host') {
+    return plan;
+  }
+  let result: HostProbe;
+  try {
+    const { stdout, stderr } = await execFileAsync(plan.spawn, hostProbeArgs(plan.program), {
+      timeout: 10000,
+      env,
+    });
+    result = interpretHostProbe({ exitCode: 0, stdout, stderr });
+  } catch (err) {
+    const e = err as { code?: number | string; killed?: boolean; stdout?: string; stderr?: string; message?: string };
+    result = interpretHostProbe({
+      exitCode: e.killed ? 'timed out' : e.code,
+      stdout: e.stdout ?? '',
+      stderr: e.stderr ?? (e.code === undefined ? String(e.message ?? err) : ''),
+    });
+  }
+  if (result.ok) {
+    return plan;
+  }
+  return { kind: 'error', message: hostProbeMessage(tool, plan.program, result, env.FLATPAK_ID) };
 }
