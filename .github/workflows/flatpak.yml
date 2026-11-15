@@ -294,8 +294,8 @@ jobs:
           XDG_RUNTIME_DIR="/run/user/$(id -u)"
           export XDG_RUNTIME_DIR
           flatpak run --command=sh "$APP_ID" -c 'ls -l /app/bin /app/share/codium | head -40'
-          flatpak run --command=sh "$APP_ID" -c 'test -x /app/share/codium/codium'
-          echo "bin=/app/share/codium/codium" >> "$GITHUB_OUTPUT"
+          flatpak run --command=sh "$APP_ID" -c 'test -x /app/share/codium/com.vscodium.codium'
+          echo "bin=/app/share/codium/com.vscodium.codium" >> "$GITHUB_OUTPUT"
 
       # -- the scenarios -------------------------------------------------------
 

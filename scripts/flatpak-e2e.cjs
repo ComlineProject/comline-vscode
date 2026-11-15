@@ -2,7 +2,7 @@
 // The extension's program resolution, run inside Flathub's real VSCodium
 // sandbox, against a real `flatpak-spawn --host`.
 //
-//   flatpak run --command=/app/share/codium/codium \
+//   flatpak run --command=/app/share/codium/com.vscodium.codium \
 //     --env=ELECTRON_RUN_AS_NODE=1 com.vscodium.codium \
 //     scripts/flatpak-e2e.cjs <config.json>
 //
