@@ -288,8 +288,11 @@ yarn install
 # see TESTING.md)
 yarn link-binary <path-to-a-language-server-checkout>
 
-# Compile TypeScript
+# Type-check (tsc; also builds out/ for the unit tests)
 yarn compile
+
+# Bundle the extension into dist/extension.js (what the editor runs)
+yarn bundle
 
 # Package the extension
 yarn package
