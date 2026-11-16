@@ -93,6 +93,17 @@ All notable changes to the "comline-vscode" extension will be documented in this
   held by vsce's old `markdown-it`, `linkify-it` and `uuid` with it.
 
 ### Fixed
+- The extension is bundled (esbuild) into one file, `dist/extension.js`, and the
+  `.vsix` no longer carries `node_modules`. `vsce` had been copying the
+  top-level `node_modules/<name>` of each dependency, which is whichever copy
+  the development dependencies made most common, not the one the dependency
+  asked for: the packages held `minimatch` 3 and `brace-expansion` 2 for
+  `vscode-languageclient`, which wants `minimatch` ^5.1.0, whose own
+  `brace-expansion` is ^2. The bundle resolves every `require` from the file
+  that makes it, so `vscode-languageclient` gets its own `minimatch` 5.1.x. The
+  bundle targets Node 16, the extension host of VS Code 1.75, and CI loads it
+  on Node 16. `tsc` stays as the type check and builds `out/` for the unit
+  tests (`yarn bundle` makes the bundle).
 - `comline.server.mode: "path"` never worked: the extension passed the bare
   name `comline-lsp` to a file-existence check, which looks in the current
   directory, not on `PATH`. The name is now looked up on `PATH` (with

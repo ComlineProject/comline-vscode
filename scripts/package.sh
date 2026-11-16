@@ -36,7 +36,7 @@ fi
 
 echo ""
 echo "📦 Packaging extension..."
-npx vsce package --yarn
+npx vsce package --no-dependencies
 
 VSIX_FILE=$(ls -t *.vsix 2>/dev/null | head -n1)
 if [ -n "$VSIX_FILE" ]; then

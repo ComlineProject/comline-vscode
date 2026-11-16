@@ -68,8 +68,9 @@ pinned language server for every platform, smoke-tests each binary, packages one
 
 | Command | Description |
 |---------|-------------|
-| `yarn compile` | Compile TypeScript |
-| `yarn watch` | Watch mode for development |
+| `yarn compile` | Type-check with tsc (also builds `out/` for the tests) |
+| `yarn bundle` | Bundle the extension into `dist/extension.js`, which the editor runs |
+| `yarn watch` | Watch mode for tsc |
 | `yarn lint` | Run ESLint |
 | `yarn package` | Package extension for this machine |
 | `yarn link-binary` | Run symlink helper script |
@@ -89,7 +90,7 @@ yarn compile
 
 **Want to rebuild?**
 ```bash
-yarn compile && code --install-extension *.vsix
+yarn package && code --install-extension *.vsix
 ```
 
 ---

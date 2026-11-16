@@ -16,4 +16,9 @@ scripts/**
 test-workspace/**
 bin/README.md
 RELEASING.md
-out/**/*.test.js
+
+# The bundle (dist/extension.js) holds the code and every dependency it needs
+# (scripts/bundle.mjs), so neither the dependencies nor the tsc output that the
+# unit tests and the Flatpak e2e use ship.
+node_modules/**
+out/**
