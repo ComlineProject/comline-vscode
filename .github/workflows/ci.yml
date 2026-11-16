@@ -47,7 +47,6 @@ jobs:
 
       - name: Lint TypeScript
         run: yarn lint
-        continue-on-error: true
 
       - name: Compile TypeScript
         run: yarn compile
