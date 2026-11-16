@@ -75,6 +75,14 @@ All notable changes to the "comline-vscode" extension will be documented in this
 - Generate runs `comline generation` and Clean runs `comline generation clean`,
   as cli#153 renamed them; they need a CLI with those commands. The command
   ids (`comline.generate`, `comline.clean`) and titles are unchanged.
+- The locked versions of the packages with open security advisories are raised
+  within the ranges `package.json` and their dependents already allow (no range
+  changed). The packaged extension's own dependencies move off the advisories
+  open against them: `minimatch` 5.1.6 to 5.1.9 and `brace-expansion` 2.0.2 to
+  2.1.8, both pulled in by `vscode-languageclient`. The rest is development
+  tooling (`undici`, `qs`, `js-yaml`, `tmp`, `flatted`, `form-data`,
+  `picomatch`, and eslint 8's `minimatch` 3 and `brace-expansion` 1), which the
+  `.vsix` does not contain.
 
 ### Fixed
 - `comline.server.mode: "path"` never worked: the extension passed the bare
